@@ -19,6 +19,7 @@
 //! Full XSD validation against the official schema runs in CI via `xmllint` when the
 //! schema is vendored — see `core/schemas/README.md`.
 
+pub mod builder;
 pub mod error;
 pub mod head001;
 pub mod pacs002;
