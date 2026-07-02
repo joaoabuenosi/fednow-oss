@@ -1,0 +1,12 @@
+[package]
+name = "fednow-gateway"
+description = "FedNow send middleware: state machine, event sourcing, outbox, pacs.028 reconciler (planned)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+fednow-core = { path = "../core" }

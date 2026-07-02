@@ -1,0 +1,15 @@
+[package]
+name = "fednow-core"
+description = "ISO 20022 parsing, validation, construction and signing for FedNow send-side integrations"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+quick-xml = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }

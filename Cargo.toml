@@ -1,0 +1,17 @@
+[workspace]
+resolver = "2"
+members = ["core", "simulator", "gateway", "conformance"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+rust-version = "1.75"
+repository = "https://github.com/fednow-oss/fednow"
+authors = ["FedNow OSS contributors"]
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+quick-xml = { version = "0.37", features = ["serialize"] }
+thiserror = "2"
+chrono = { version = "0.4", default-features = false, features = ["std"] }

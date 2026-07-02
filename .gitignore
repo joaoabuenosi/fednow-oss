@@ -1,0 +1,20 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Local-only files (never commit credentials or certificates)
+*.pem
+*.p12
+*.pfx
+*.key
+.env
+.env.*

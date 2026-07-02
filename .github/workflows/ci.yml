@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: fmt + clippy + test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: rustfmt
+        run: cargo fmt --all --check
+      - name: clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: tests
+        run: cargo test --workspace
+
+  xsd-validate:
+    # Validates XML fixtures against the official ISO 20022 XSD, but only when the
+    # schema has been vendored into core/schemas/ (see core/schemas/README.md).
+    name: XSD validation (optional)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate fixtures against pacs.008.001.08.xsd
+        run: |
+          if [ -f core/schemas/pacs.008.001.08.xsd ]; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq libxml2-utils
+            for f in core/tests/fixtures/pacs008_valid*.xml; do
+              echo "validating $f"
+              xmllint --noout --schema core/schemas/pacs.008.001.08.xsd "$f"
+            done
+          else
+            echo "No XSD vendored yet (core/schemas/pacs.008.001.08.xsd absent) — skipping."
+            echo "See core/schemas/README.md for how to obtain it."
+          fi
