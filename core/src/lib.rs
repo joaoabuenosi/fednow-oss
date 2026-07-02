@@ -2,8 +2,9 @@
 //! for FedNow send-side integrations.
 //!
 //! Current scope: parse and validate pacs.008.001.08
-//! (FIToFICustomerCreditTransferV08) and pacs.002.001.10
-//! (FIToFIPaymentStatusReportV10).
+//! (FIToFICustomerCreditTransferV08), pacs.002.001.10
+//! (FIToFIPaymentStatusReportV10) and head.001.001.02 (Business Application
+//! Header — carries sender/receiver routing and the message signature envelope).
 //!
 //! Validation happens in two layers:
 //! 1. **Structural** — [`pacs008::parse`] fails if required elements are missing or
@@ -19,9 +20,12 @@
 //! schema is vendored — see `core/schemas/README.md`.
 
 pub mod error;
+pub mod head001;
 pub mod pacs002;
 pub mod pacs008;
 pub mod validate;
 
 pub use error::ParseError;
-pub use validate::{validate_pacs002, validate_pacs008, RuleSource, ValidationIssue};
+pub use validate::{
+    validate_head001, validate_pacs002, validate_pacs008, RuleSource, ValidationIssue,
+};

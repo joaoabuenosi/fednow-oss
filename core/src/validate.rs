@@ -12,8 +12,8 @@
 //!
 //! All issues are collected; nothing short-circuits.
 
-use crate::pacs002;
 use crate::pacs008::{ActiveCurrencyAndAmount, CreditTransferTransaction, Document, NAMESPACE};
+use crate::{head001, pacs002};
 
 /// Where a validation requirement comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -300,6 +300,140 @@ fn validate_status_transaction(
 
 /// Transaction statuses used by FedNow credit-transfer flows.
 const FEDNOW_TX_STATUSES: [&str; 4] = ["ACTC", "ACSC", "ACWP", "RJCT"];
+
+/// Validate a parsed head.001.001.02 Business Application Header, returning
+/// every violation found.
+///
+/// An empty vector means the header passed all implemented checks.
+pub fn validate_head001(hdr: &head001::AppHdr) -> Vec<ValidationIssue> {
+    let mut issues = Vec::new();
+
+    if hdr.xmlns.as_deref() != Some(head001::NAMESPACE) {
+        issues.push(ValidationIssue::new(
+            "xsd.namespace",
+            "AppHdr",
+            format!(
+                "expected namespace {}, found {}",
+                head001::NAMESPACE,
+                hdr.xmlns.as_deref().unwrap_or("(none)")
+            ),
+            RuleSource::XsdFacet,
+        ));
+    }
+
+    check_max35text(
+        &mut issues,
+        "xsd.bizmsgidr.length",
+        "AppHdr/BizMsgIdr",
+        &hdr.business_message_identifier,
+    );
+
+    check_max35text(
+        &mut issues,
+        "xsd.msgdefidr.length",
+        "AppHdr/MsgDefIdr",
+        &hdr.message_definition_identifier,
+    );
+    if !is_message_definition_identifier(&hdr.message_definition_identifier) {
+        issues.push(ValidationIssue::new(
+            "iso.msgdefidr.format",
+            "AppHdr/MsgDefIdr",
+            format!(
+                "'{}' does not follow the ISO 20022 message identifier convention (e.g. pacs.008.001.08)",
+                hdr.message_definition_identifier
+            ),
+            RuleSource::IsoRule,
+        ));
+    }
+
+    if !is_iso_date_time(&hdr.creation_date) {
+        issues.push(ValidationIssue::new(
+            "xsd.credt.format",
+            "AppHdr/CreDt",
+            format!("'{}' is not a valid ISO 8601 date-time", hdr.creation_date),
+            RuleSource::XsdFacet,
+        ));
+    } else if !(hdr.creation_date.ends_with('Z') || hdr.creation_date.ends_with("+00:00")) {
+        // The BAH usage guide defines CreDt as normalised to UTC.
+        issues.push(ValidationIssue::new(
+            "iso.credt.utc",
+            "AppHdr/CreDt",
+            format!(
+                "BAH creation date must be normalised to UTC (Z), found '{}'",
+                hdr.creation_date
+            ),
+            RuleSource::IsoRule,
+        ));
+    }
+
+    if let Some(cpy) = &hdr.copy_duplicate {
+        if !["CODU", "COPY", "DUPL"].contains(&cpy.as_str()) {
+            issues.push(ValidationIssue::new(
+                "xsd.cpydplct.enum",
+                "AppHdr/CpyDplct",
+                format!("'{cpy}' is not one of CODU, COPY, DUPL"),
+                RuleSource::XsdFacet,
+            ));
+        }
+    }
+
+    for (party, tag) in [(&hdr.from, "Fr"), (&hdr.to, "To")] {
+        validate_party44(&mut issues, tag, party);
+    }
+
+    issues
+}
+
+fn validate_party44(issues: &mut Vec<ValidationIssue>, tag: &str, party: &head001::Party44Choice) {
+    match (&party.organisation, &party.financial_institution) {
+        (Some(_), Some(_)) | (None, None) => {
+            issues.push(ValidationIssue::new(
+                "xsd.party44.choice",
+                format!("AppHdr/{tag}"),
+                "Party44Choice requires exactly one of OrgId or FIId".to_string(),
+                RuleSource::XsdFacet,
+            ));
+        }
+        (Some(_), None) => {
+            // Schema-valid, but FedNow participants are financial institutions
+            // addressed by routing number.
+            issues.push(ValidationIssue::new(
+                "fednow.party.fiid",
+                format!("AppHdr/{tag}"),
+                "FedNow addresses participants via FIId (routing number), not OrgId".to_string(),
+                RuleSource::FedNowProfile,
+            ));
+        }
+        (None, Some(fi)) => {
+            if let Some(member) = &fi
+                .financial_institution_identification
+                .clearing_system_member_identification
+            {
+                validate_routing_number(
+                    issues,
+                    format!("AppHdr/{tag}/FIId/FinInstnId/ClrSysMmbId/MmbId"),
+                    &member.member_identification,
+                );
+            }
+        }
+    }
+}
+
+/// ISO 20022 message identifier convention: `aaaa.nnn.nnn.nn`.
+fn is_message_definition_identifier(s: &str) -> bool {
+    let parts: Vec<&str> = s.split('.').collect();
+    if parts.len() != 4 {
+        return false;
+    }
+    parts[0].len() == 4
+        && parts[0].bytes().all(|b| b.is_ascii_lowercase())
+        && parts[1].len() == 3
+        && parts[1].bytes().all(|b| b.is_ascii_digit())
+        && parts[2].len() == 3
+        && parts[2].bytes().all(|b| b.is_ascii_digit())
+        && parts[3].len() == 2
+        && parts[3].bytes().all(|b| b.is_ascii_digit())
+}
 
 fn validate_transaction(
     issues: &mut Vec<ValidationIssue>,
