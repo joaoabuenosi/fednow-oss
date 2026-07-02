@@ -19,9 +19,8 @@ fn main() {
     )
     .uetr("8a562c67-ca16-48ba-b074-65581be6f001")
     .interbank_settlement_date("2026-07-02")
-    // Placeholder codes: the concrete values come from the FedNow code list.
-    .local_instrument("EXAMPLE")
-    .category_purpose("EXAMPLE")
+    // LclInstrm defaults to FDNA; category purpose: CONS (consumer) or BIZZ.
+    .category_purpose("CONS")
     .debtor_name("Jane Example Debtor")
     .debtor_account("123456789012")
     .creditor_name("John Example Creditor")

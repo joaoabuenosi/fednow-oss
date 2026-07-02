@@ -20,10 +20,10 @@
       </PmtId>
       <PmtTpInf>
         <LclInstrm>
-          <Prtry>EXAMPLE</Prtry>
+          <Prtry>FDNA</Prtry>
         </LclInstrm>
         <CtgyPurp>
-          <Prtry>EXAMPLE</Prtry>
+          <Prtry>CONS</Prtry>
         </CtgyPurp>
       </PmtTpInf>
       <IntrBkSttlmAmt Ccy="USD">1250.00</IntrBkSttlmAmt>

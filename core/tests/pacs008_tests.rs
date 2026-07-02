@@ -108,7 +108,7 @@ fn missing_clearing_system_fdn_is_flagged() {
 #[test]
 fn missing_payment_type_information_is_flagged() {
     let xml = VALID.replace(
-        "<PmtTpInf>\n        <LclInstrm>\n          <Prtry>EXAMPLE</Prtry>\n        </LclInstrm>\n        <CtgyPurp>\n          <Prtry>EXAMPLE</Prtry>\n        </CtgyPurp>\n      </PmtTpInf>\n      ",
+        "<PmtTpInf>\n        <LclInstrm>\n          <Prtry>FDNA</Prtry>\n        </LclInstrm>\n        <CtgyPurp>\n          <Prtry>CONS</Prtry>\n        </CtgyPurp>\n      </PmtTpInf>\n      ",
         "",
     );
     assert!(codes(&xml).contains(&"fednow.pmttpinf.required"));
@@ -117,7 +117,7 @@ fn missing_payment_type_information_is_flagged() {
 #[test]
 fn payment_type_information_without_ctgypurp_is_flagged() {
     let xml = VALID.replace(
-        "<CtgyPurp>\n          <Prtry>EXAMPLE</Prtry>\n        </CtgyPurp>\n      ",
+        "<CtgyPurp>\n          <Prtry>CONS</Prtry>\n        </CtgyPurp>\n      ",
         "",
     );
     assert!(codes(&xml).contains(&"fednow.pmttpinf.ctgypurp"));
