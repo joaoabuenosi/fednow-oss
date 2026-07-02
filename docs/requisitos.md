@@ -105,6 +105,11 @@ Fase 2 chegar.
   separa 100% dos projetos do dealership, permite mantenedores futuros, e o perfil
   pessoal aparece como founder. (Se ainda assim preferir conta separada, o caminho
   compatível é conta de trabalho/máquina paga ou org — org é o padrão da indústria.)
+- **Decisão (jul/2026):** o repo vive na conta pessoal —
+  `github.com/joaoabuenosi/fednow-oss`. Migração para organização fica adiada
+  para quando houver mantenedores externos ou interesse comercial (o GitHub
+  redireciona URLs automaticamente na transferência, então o custo de migrar
+  depois é zero).
 - Monorepo: `core/`, `simulator/`, `gateway/`, `docs/`, `conformance/`
   (Cargo workspaces).
 - Público desde o primeiro commit, README honesto ("early development").
