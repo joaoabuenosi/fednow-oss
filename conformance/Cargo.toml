@@ -1,0 +1,12 @@
+[package]
+name = "fednow-conformance"
+description = "Conformance suite for fednow-core-compatible implementations (planned)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+fednow-core = { path = "../core" }
