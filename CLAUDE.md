@@ -43,9 +43,13 @@ petição EB-2 NIW, mas existe independente do resultado dela.
 - Commits e código em inglês; discussão com Joca pode ser em PT-BR.
 
 ## Milestone atual
-**M1: fednow-core parseia e valida um pacs.008 (XSD) com CI verde.**
-Depois: pacs.002 → assinatura XMLDSig → fednow-sim v0 (Docker) → cenários de
-timeout/pacs.028 → gateway v0 → guia "do zero ao CTP".
+**M2: pacs.002 (status report) + assinatura XMLDSig no fednow-core.**
+Feito: M1 — pacs.008 parse/validate com CI verde (jul/2026).
+Depois: fednow-sim v0 (Docker) → cenários de timeout/pacs.028 → gateway v0 →
+guia "do zero ao CTP".
+
+Repo: https://github.com/joaoabuenosi/fednow-oss (conta pessoal; org fica p/
+quando houver mantenedores externos). Main protegida: PR + CI verde obrigatórios.
 
 ## Referências
 - docs/requisitos.md — requisitos completos de negócio e técnicos (fontes: FedNow
