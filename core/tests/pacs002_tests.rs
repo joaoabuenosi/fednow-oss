@@ -3,7 +3,9 @@
 //! Two base fixtures: a settlement advice (ACSC) and a rejection (RJCT) with a
 //! reason code. Invalid variants derive from them by targeted string edits.
 
-use fednow_core::validate::{validate_pacs002, RuleSource};
+use fednow_core::validate::{
+    validate_pacs002, validate_pacs002_direction, Pacs002Direction, RuleSource,
+};
 use fednow_core::{pacs002, ParseError};
 
 const VALID_ACSC: &str = include_str!("fixtures/pacs002_valid_acsc.xml");
@@ -23,27 +25,128 @@ fn parses_settlement_advice_into_typed_model() {
     let msg = &doc.fi_to_fi_payment_status_report;
     assert_eq!(
         msg.group_header.message_identification,
-        "M20260702STATUSFIXTURE00000001"
+        "FEDNOWSVCADVICE000000000000001"
     );
-
-    let orig = msg
-        .original_group_information_and_status
-        .as_ref()
-        .expect("fixture references the original message");
-    assert_eq!(
-        orig.original_message_identification,
-        "M20260702FIXTURE00000000000001"
-    );
-    assert_eq!(orig.original_message_name_identification, "pacs.008.001.08");
+    // FedNow reports per transaction, not per group.
+    assert!(msg.original_group_information_and_status.is_none());
 
     assert_eq!(msg.transaction_information_and_status.len(), 1);
     let tx = &msg.transaction_information_and_status[0];
+    let orig = tx
+        .original_group_information
+        .as_ref()
+        .expect("fixture references the original message per transaction");
+    assert_eq!(
+        orig.original_message_identification,
+        "20260702021040078FIXTURE001"
+    );
+    assert_eq!(orig.original_message_name_identification, "pacs.008.001.08");
+    assert!(orig.original_creation_date_time.is_some());
+
     assert_eq!(tx.transaction_status.as_deref(), Some("ACSC"));
     assert_eq!(
         tx.original_end_to_end_identification.as_deref(),
         Some("E2E-20260702-0001")
     );
     assert!(tx.acceptance_date_time.is_some());
+    assert!(tx
+        .effective_interbank_settlement_date
+        .as_ref()
+        .and_then(|d| d.date.as_deref())
+        .is_some());
+    assert!(tx.instructing_agent.is_some());
+    assert!(tx.instructed_agent.is_some());
+}
+
+#[test]
+fn service_advice_validates_clean_for_its_direction() {
+    let doc = pacs002::parse(VALID_ACSC).unwrap();
+    let issues = validate_pacs002_direction(&doc, Pacs002Direction::ServiceToParticipant);
+    assert!(issues.is_empty(), "expected clean, got: {issues:#?}");
+}
+
+#[test]
+fn participant_response_validates_clean_for_its_direction() {
+    let doc = pacs002::parse(VALID_RJCT).unwrap();
+    let issues = validate_pacs002_direction(&doc, Pacs002Direction::ParticipantToService);
+    assert!(issues.is_empty(), "expected clean, got: {issues:#?}");
+}
+
+#[test]
+fn service_advice_fails_the_participant_profile() {
+    // The advice carries AccptncDtTm/FctvIntrBkSttlmDt and a non-FedNow MsgId —
+    // all fine for the service, violations for a participant.
+    let doc = pacs002::parse(VALID_ACSC).unwrap();
+    let found: Vec<_> = validate_pacs002_direction(&doc, Pacs002Direction::ParticipantToService)
+        .into_iter()
+        .map(|i| i.code)
+        .collect();
+    for expected in [
+        "fednow.msgid.format",
+        "fednow.accptncdttm.absent",
+        "fednow.fctvdt.absent",
+    ] {
+        assert!(found.contains(&expected), "missing {expected} in {found:?}");
+    }
+}
+
+#[test]
+fn missing_orgnlgrpinf_is_flagged_by_the_fednow_profile() {
+    let xml = VALID_RJCT.replace(
+        "<OrgnlGrpInf>\n        <OrgnlMsgId>20260702021040078FIXTURE001</OrgnlMsgId>\n        <OrgnlMsgNmId>pacs.008.001.08</OrgnlMsgNmId>\n        <OrgnlCreDtTm>2026-07-02T10:30:00-05:00</OrgnlCreDtTm>\n      </OrgnlGrpInf>\n      ",
+        "",
+    );
+    let doc = pacs002::parse(&xml).unwrap();
+    let found: Vec<_> = validate_pacs002_direction(&doc, Pacs002Direction::ParticipantToService)
+        .into_iter()
+        .map(|i| i.code)
+        .collect();
+    assert!(found.contains(&"fednow.orgnlgrpinf.required"), "{found:?}");
+}
+
+#[test]
+fn missing_orgnlcredttm_is_flagged_by_the_fednow_profile() {
+    let xml = VALID_RJCT.replace(
+        "<OrgnlCreDtTm>2026-07-02T10:30:00-05:00</OrgnlCreDtTm>\n      ",
+        "",
+    );
+    let doc = pacs002::parse(&xml).unwrap();
+    let found: Vec<_> = validate_pacs002_direction(&doc, Pacs002Direction::ParticipantToService)
+        .into_iter()
+        .map(|i| i.code)
+        .collect();
+    assert!(found.contains(&"fednow.orgnlcredttm.required"), "{found:?}");
+}
+
+#[test]
+fn proprietary_reason_is_rejected_for_participant_direction() {
+    let xml = VALID_RJCT.replace("<Cd>AC04</Cd>", "<Prtry>CUSTOM</Prtry>");
+    let doc = pacs002::parse(&xml).unwrap();
+    let found: Vec<_> = validate_pacs002_direction(&doc, Pacs002Direction::ParticipantToService)
+        .into_iter()
+        .map(|i| i.code)
+        .collect();
+    assert!(found.contains(&"fednow.stsrsn.cd"), "{found:?}");
+    // But the service direction allows proprietary reasons.
+    let service: Vec<_> = validate_pacs002_direction(&doc, Pacs002Direction::ServiceToParticipant)
+        .into_iter()
+        .map(|i| i.code)
+        .collect();
+    assert!(!service.contains(&"fednow.stsrsn.cd"), "{service:?}");
+}
+
+#[test]
+fn missing_instructing_agent_is_flagged_by_the_fednow_profile() {
+    let xml = VALID_RJCT.replace(
+        "<InstgAgt>\n        <FinInstnId>\n          <ClrSysMmbId>\n            <ClrSysId>\n              <Cd>USABA</Cd>\n            </ClrSysId>\n            <MmbId>091000019</MmbId>\n          </ClrSysMmbId>\n        </FinInstnId>\n      </InstgAgt>\n      ",
+        "",
+    );
+    let doc = pacs002::parse(&xml).unwrap();
+    let found: Vec<_> = validate_pacs002_direction(&doc, Pacs002Direction::ParticipantToService)
+        .into_iter()
+        .map(|i| i.code)
+        .collect();
+    assert!(found.contains(&"fednow.instgagt.required"), "{found:?}");
 }
 
 #[test]

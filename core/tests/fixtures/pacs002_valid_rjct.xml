@@ -2,14 +2,15 @@
 <Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.002.001.10">
   <FIToFIPmtStsRpt>
     <GrpHdr>
-      <MsgId>M20260702STATUSFIXTURE00000002</MsgId>
+      <MsgId>20260702091000019REJECT0001</MsgId>
       <CreDtTm>2026-07-02T10:31:00-05:00</CreDtTm>
     </GrpHdr>
-    <OrgnlGrpInfAndSts>
-      <OrgnlMsgId>M20260702FIXTURE00000000000001</OrgnlMsgId>
-      <OrgnlMsgNmId>pacs.008.001.08</OrgnlMsgNmId>
-    </OrgnlGrpInfAndSts>
     <TxInfAndSts>
+      <OrgnlGrpInf>
+        <OrgnlMsgId>20260702021040078FIXTURE001</OrgnlMsgId>
+        <OrgnlMsgNmId>pacs.008.001.08</OrgnlMsgNmId>
+        <OrgnlCreDtTm>2026-07-02T10:30:00-05:00</OrgnlCreDtTm>
+      </OrgnlGrpInf>
       <OrgnlInstrId>INSTR-0001</OrgnlInstrId>
       <OrgnlEndToEndId>E2E-20260702-0001</OrgnlEndToEndId>
       <OrgnlUETR>8a562c67-ca16-48ba-b074-65581be6f001</OrgnlUETR>
@@ -20,6 +21,26 @@
         </Rsn>
         <AddtlInf>Creditor account closed</AddtlInf>
       </StsRsnInf>
+      <InstgAgt>
+        <FinInstnId>
+          <ClrSysMmbId>
+            <ClrSysId>
+              <Cd>USABA</Cd>
+            </ClrSysId>
+            <MmbId>091000019</MmbId>
+          </ClrSysMmbId>
+        </FinInstnId>
+      </InstgAgt>
+      <InstdAgt>
+        <FinInstnId>
+          <ClrSysMmbId>
+            <ClrSysId>
+              <Cd>USABA</Cd>
+            </ClrSysId>
+            <MmbId>021040078</MmbId>
+          </ClrSysMmbId>
+        </FinInstnId>
+      </InstdAgt>
     </TxInfAndSts>
   </FIToFIPmtStsRpt>
 </Document>
