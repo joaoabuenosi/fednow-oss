@@ -21,7 +21,8 @@ community banks, credit unions and service providers in the US.
 
 ## Current milestone
 
-**M1 — `fednow-core` parses and validates a pacs.008 (FI-to-FI customer credit transfer) with green CI.**
+**M2 — `fednow-core` parses and validates pacs.002 (payment status report) and signs
+messages with XMLDSig.** (M1 — pacs.008 parse/validate with green CI — done.)
 
 ```sh
 cargo test --workspace
