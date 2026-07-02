@@ -78,6 +78,17 @@ pub fn validate_pacs008(doc: &Document) -> Vec<ValidationIssue> {
         "GrpHdr/MsgId",
         &hdr.message_identification,
     );
+    if !is_fednow_message_id(&hdr.message_identification) {
+        issues.push(ValidationIssue::new(
+            "fednow.msgid.format",
+            "GrpHdr/MsgId",
+            format!(
+                "'{}' is not a FedNow message id (CCYYMMDD + 9-char connection party id + 1..18-char reference)",
+                hdr.message_identification
+            ),
+            RuleSource::FedNowProfile,
+        ));
+    }
 
     if !is_iso_date_time(&hdr.creation_date_time) {
         issues.push(ValidationIssue::new(
@@ -112,6 +123,13 @@ pub fn validate_pacs008(doc: &Document) -> Vec<ValidationIssue> {
             ),
             RuleSource::IsoRule,
         ));
+    } else if nb != "1" {
+        issues.push(ValidationIssue::new(
+            "fednow.nboftxs.one",
+            "GrpHdr/NbOfTxs",
+            "the FedNow profile fixes NbOfTxs at 1 (one transaction per message)".to_string(),
+            RuleSource::FedNowProfile,
+        ));
     }
 
     if hdr.settlement_information.settlement_method != "CLRG" {
@@ -121,6 +139,23 @@ pub fn validate_pacs008(doc: &Document) -> Vec<ValidationIssue> {
             format!(
                 "FedNow settles as a clearing system: SttlmMtd must be CLRG, found '{}'",
                 hdr.settlement_information.settlement_method
+            ),
+            RuleSource::FedNowProfile,
+        ));
+    }
+
+    let clr_sys_cd = hdr
+        .settlement_information
+        .clearing_system
+        .as_ref()
+        .and_then(|c| c.code.as_deref());
+    if clr_sys_cd != Some("FDN") {
+        issues.push(ValidationIssue::new(
+            "fednow.clrsys.fdn",
+            "GrpHdr/SttlmInf/ClrSys/Cd",
+            format!(
+                "the FedNow profile requires ClrSys/Cd 'FDN', found {}",
+                clr_sys_cd.unwrap_or("(none)")
             ),
             RuleSource::FedNowProfile,
         ));
@@ -573,7 +608,86 @@ fn validate_transaction(
         }
     }
 
+    match &tx.payment_type_information {
+        None => issues.push(ValidationIssue::new(
+            "fednow.pmttpinf.required",
+            format!("{base}/PmtTpInf"),
+            "the FedNow profile requires PmtTpInf with LclInstrm and CtgyPurp".to_string(),
+            RuleSource::FedNowProfile,
+        )),
+        Some(pt) => {
+            if pt
+                .local_instrument
+                .as_ref()
+                .and_then(|c| c.proprietary.as_ref())
+                .is_none()
+            {
+                issues.push(ValidationIssue::new(
+                    "fednow.pmttpinf.lclinstrm",
+                    format!("{base}/PmtTpInf/LclInstrm"),
+                    "the FedNow profile requires LclInstrm/Prtry".to_string(),
+                    RuleSource::FedNowProfile,
+                ));
+            }
+            if pt
+                .category_purpose
+                .as_ref()
+                .and_then(|c| c.proprietary.as_ref())
+                .is_none()
+            {
+                issues.push(ValidationIssue::new(
+                    "fednow.pmttpinf.ctgypurp",
+                    format!("{base}/PmtTpInf/CtgyPurp"),
+                    "the FedNow profile requires CtgyPurp/Prtry".to_string(),
+                    RuleSource::FedNowProfile,
+                ));
+            }
+        }
+    }
+
     validate_amount(issues, &base, &tx.interbank_settlement_amount);
+
+    if tx.interbank_settlement_date.is_none() {
+        issues.push(ValidationIssue::new(
+            "fednow.intrbksttlmdt.required",
+            format!("{base}/IntrBkSttlmDt"),
+            "the FedNow profile requires IntrBkSttlmDt".to_string(),
+            RuleSource::FedNowProfile,
+        ));
+    }
+
+    for (agent, code, tag) in [
+        (
+            &tx.instructing_agent,
+            "fednow.instgagt.required",
+            "InstgAgt",
+        ),
+        (&tx.instructed_agent, "fednow.instdagt.required", "InstdAgt"),
+    ] {
+        match agent {
+            None => issues.push(ValidationIssue::new(
+                code,
+                format!("{base}/{tag}"),
+                format!("the FedNow profile requires {tag}"),
+                RuleSource::FedNowProfile,
+            )),
+            Some(a) => validate_frs_agent(issues, &format!("{base}/{tag}"), a),
+        }
+    }
+
+    for (account, code, tag) in [
+        (&tx.debtor_account, "fednow.dbtracct.required", "DbtrAcct"),
+        (&tx.creditor_account, "fednow.cdtracct.required", "CdtrAcct"),
+    ] {
+        if account.is_none() {
+            issues.push(ValidationIssue::new(
+                code,
+                format!("{base}/{tag}"),
+                format!("the FedNow profile requires {tag}"),
+                RuleSource::FedNowProfile,
+            ));
+        }
+    }
 
     // ChargeBearerType1Code enumeration, then the FedNow restriction on top.
     const CHARGE_BEARERS: [&str; 4] = ["DEBT", "CRED", "SHAR", "SLEV"];
@@ -603,17 +717,59 @@ fn validate_transaction(
         (&tx.debtor_agent, "DbtrAgt"),
         (&tx.creditor_agent, "CdtrAgt"),
     ] {
-        if let Some(member) = &agent
-            .financial_institution_identification
-            .clearing_system_member_identification
-        {
+        validate_frs_agent(issues, &format!("{base}/{tag}"), agent);
+    }
+}
+
+/// Agents in FedNow payment messages carry `ClrSysMmbId` with `ClrSysId/Cd`
+/// fixed at `USABA` and a 9-digit routing number (`RoutingNumber_FRS`).
+fn validate_frs_agent(
+    issues: &mut Vec<ValidationIssue>,
+    path: &str,
+    agent: &crate::pacs008::BranchAndFinancialInstitutionIdentification,
+) {
+    match &agent
+        .financial_institution_identification
+        .clearing_system_member_identification
+    {
+        None => issues.push(ValidationIssue::new(
+            "fednow.agent.clrsysmmbid",
+            format!("{path}/FinInstnId/ClrSysMmbId"),
+            "the FedNow profile identifies agents via ClrSysMmbId".to_string(),
+            RuleSource::FedNowProfile,
+        )),
+        Some(member) => {
+            let scheme = member
+                .clearing_system_identification
+                .as_ref()
+                .and_then(|c| c.code.as_deref());
+            if scheme != Some("USABA") {
+                issues.push(ValidationIssue::new(
+                    "fednow.agent.usaba",
+                    format!("{path}/FinInstnId/ClrSysMmbId/ClrSysId/Cd"),
+                    format!(
+                        "the FedNow profile requires ClrSysId/Cd 'USABA', found {}",
+                        scheme.unwrap_or("(none)")
+                    ),
+                    RuleSource::FedNowProfile,
+                ));
+            }
             validate_routing_number(
                 issues,
-                format!("{base}/{tag}/FinInstnId/ClrSysMmbId/MmbId"),
+                format!("{path}/FinInstnId/ClrSysMmbId/MmbId"),
                 &member.member_identification,
             );
         }
     }
+}
+
+/// FedNow message id: CCYYMMDD + 9-char connection party id + 1..18-char
+/// sender reference (18..35 alphanumerics total, first 8 numeric).
+fn is_fednow_message_id(s: &str) -> bool {
+    (18..=35).contains(&s.len())
+        && s.bytes().take(8).all(|b| b.is_ascii_digit())
+        && s.len() >= 8
+        && s.bytes().skip(8).all(|b| b.is_ascii_alphanumeric())
 }
 
 fn validate_amount(
@@ -662,8 +818,16 @@ fn validate_amount(
             if dec.fraction_digits > 2 {
                 issues.push(ValidationIssue::new(
                     "fednow.amount.cents",
-                    path,
+                    path.clone(),
                     format!("USD amounts carry at most 2 fraction digits, found {}", dec.fraction_digits),
+                    RuleSource::FedNowProfile,
+                ));
+            }
+            if dec.total_digits > 14 {
+                issues.push(ValidationIssue::new(
+                    "fednow.amount.digits",
+                    path,
+                    format!("FedNow amounts carry at most 14 total digits, found {}", dec.total_digits),
                     RuleSource::FedNowProfile,
                 ));
             }
@@ -762,6 +926,7 @@ fn is_iso_date_time(s: &str) -> bool {
 struct DecimalFacets {
     is_zero: bool,
     fraction_digits: usize,
+    total_digits: usize,
 }
 
 /// Checks the ActiveCurrencyAndAmount facets: non-negative decimal, no sign or
@@ -785,5 +950,6 @@ fn parse_decimal(s: &str) -> Option<DecimalFacets> {
     Some(DecimalFacets {
         is_zero: s.bytes().all(|b| matches!(b, b'0' | b'.')),
         fraction_digits: frac_part.len(),
+        total_digits: int_part.len() + frac_part.len(),
     })
 }

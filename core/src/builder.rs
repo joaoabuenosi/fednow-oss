@@ -1,26 +1,38 @@
 //! Construction of FedNow-profile pacs.008 messages.
 //!
-//! [`Pacs008Builder`] produces a [`pacs008::Document`] that already satisfies the
-//! FedNow profile rules enforced by [`crate::validate::validate_pacs008`]:
-//! settlement method CLRG, charge bearer SLEV, USD with cent precision, and a
-//! single credit-transfer transaction per message (the FedNow flow is one
-//! transaction per pacs.008). Amounts are taken in cents (`u64`) so no floating
-//! point ever touches money.
+//! [`Pacs008Builder`] produces a [`pacs008::Document`](crate::pacs008::Document)
+//! that satisfies the FedNow profile rules enforced by
+//! [`crate::validate::validate_pacs008`]: settlement method CLRG over clearing
+//! system FDN, charge bearer SLEV, USD with cent precision, one transaction per
+//! message, USABA-schemed agents. Amounts are taken in cents (`u64`) so no
+//! floating point ever touches money.
 //!
 //! The builder does not invent data: message id, end-to-end id, creation
 //! date-time and both routing numbers are explicit inputs. Nothing is defaulted
 //! from clocks or randomness, which keeps construction deterministic and
 //! testable; generating UETRs and timestamps is the caller's concern (the
-//! gateway will own that).
+//! gateway will own that). Instructing/instructed agents default to the
+//! debtor/creditor agents (the direct-participant case) and can be overridden.
 
 use crate::pacs008::{
     AccountIdentification, ActiveCurrencyAndAmount, BranchAndFinancialInstitutionIdentification,
-    CashAccount, ClearingSystemIdentification, ClearingSystemMemberIdentification,
-    CreditTransferTransaction, Document, FIToFICustomerCreditTransferV08,
-    FinancialInstitutionIdentification, GenericAccountIdentification, GroupHeader,
-    PartyIdentification, PaymentIdentification, SettlementInstruction, NAMESPACE,
+    CashAccount, ClearingSystemIdentification, ClearingSystemIdentificationChoice,
+    ClearingSystemMemberIdentification, CodeOrProprietaryChoice, CreditTransferTransaction,
+    Document, FIToFICustomerCreditTransferV08, FinancialInstitutionIdentification,
+    GenericAccountIdentification, GroupHeader, PartyIdentification, PaymentIdentification,
+    PaymentTypeInformation, SettlementInstruction, NAMESPACE,
 };
 use thiserror::Error;
+
+/// Compose a FedNow message identification: `CCYYMMDD` + 9-character connection
+/// party id + sender reference (1..18 alphanumerics).
+pub fn fednow_message_id(
+    date_yyyymmdd: &str,
+    connection_party_id: &str,
+    reference: &str,
+) -> String {
+    format!("{date_yyyymmdd}{connection_party_id}{reference}")
+}
 
 /// Errors produced while serializing a built document to XML.
 #[derive(Debug, Error)]
@@ -31,9 +43,13 @@ pub enum BuildError {
 
 /// Builder for a FedNow customer credit transfer (pacs.008.001.08).
 ///
-/// Required inputs come in through [`Pacs008Builder::new`]; everything else is
-/// optional and added with the fluent setters. Call [`Pacs008Builder::build`]
-/// for the typed document or [`Pacs008Builder::to_xml`] for the wire form.
+/// Required inputs come in through [`Pacs008Builder::new`]; the remaining
+/// FedNow-mandatory fields (`interbank_settlement_date`, accounts,
+/// `local_instrument`, `category_purpose`) and the optional ones are added with
+/// the fluent setters. Call [`Pacs008Builder::build`] for the typed document or
+/// [`Pacs008Builder::to_xml`] for the wire form; run
+/// [`crate::validate::validate_pacs008`] on the result to check completeness —
+/// built and parsed messages share one diagnosis path.
 #[derive(Debug, Clone)]
 pub struct Pacs008Builder {
     message_identification: String,
@@ -42,9 +58,13 @@ pub struct Pacs008Builder {
     amount_cents: u64,
     debtor_agent_routing_number: String,
     creditor_agent_routing_number: String,
+    instructing_agent_routing_number: Option<String>,
+    instructed_agent_routing_number: Option<String>,
     instruction_identification: Option<String>,
     uetr: Option<String>,
     interbank_settlement_date: Option<String>,
+    local_instrument: Option<String>,
+    category_purpose: Option<String>,
     debtor_name: Option<String>,
     debtor_account: Option<String>,
     creditor_name: Option<String>,
@@ -52,10 +72,11 @@ pub struct Pacs008Builder {
 }
 
 impl Pacs008Builder {
-    /// Start a builder with the fields every FedNow credit transfer needs.
+    /// Start a builder with the identification core of a FedNow credit transfer.
     ///
-    /// `creation_date_time` is an ISO 8601 date-time (e.g.
-    /// `2026-07-02T15:30:00Z`); `amount_cents` is the interbank settlement
+    /// `message_identification` must follow the FedNow pattern — see
+    /// [`fednow_message_id`]. `creation_date_time` is an ISO 8601 date-time
+    /// (e.g. `2026-07-02T15:30:00Z`); `amount_cents` is the interbank settlement
     /// amount in USD cents (e.g. `125000` for $1,250.00).
     pub fn new(
         message_identification: impl Into<String>,
@@ -72,9 +93,13 @@ impl Pacs008Builder {
             amount_cents,
             debtor_agent_routing_number: debtor_agent_routing_number.into(),
             creditor_agent_routing_number: creditor_agent_routing_number.into(),
+            instructing_agent_routing_number: None,
+            instructed_agent_routing_number: None,
             instruction_identification: None,
             uetr: None,
             interbank_settlement_date: None,
+            local_instrument: None,
+            category_purpose: None,
             debtor_name: None,
             debtor_account: None,
             creditor_name: None,
@@ -92,9 +117,35 @@ impl Pacs008Builder {
         self
     }
 
-    /// Interbank settlement date (`YYYY-MM-DD`).
+    /// Interbank settlement date (`YYYY-MM-DD`). FedNow-mandatory.
     pub fn interbank_settlement_date(mut self, v: impl Into<String>) -> Self {
         self.interbank_settlement_date = Some(v.into());
+        self
+    }
+
+    /// `PmtTpInf/LclInstrm/Prtry`. FedNow-mandatory; the concrete code values
+    /// come from the FedNow code list (Technical Specifications).
+    pub fn local_instrument(mut self, v: impl Into<String>) -> Self {
+        self.local_instrument = Some(v.into());
+        self
+    }
+
+    /// `PmtTpInf/CtgyPurp/Prtry`. FedNow-mandatory; the concrete code values
+    /// come from the FedNow code list (Technical Specifications).
+    pub fn category_purpose(mut self, v: impl Into<String>) -> Self {
+        self.category_purpose = Some(v.into());
+        self
+    }
+
+    /// Override the instructing agent (defaults to the debtor agent).
+    pub fn instructing_agent_routing_number(mut self, v: impl Into<String>) -> Self {
+        self.instructing_agent_routing_number = Some(v.into());
+        self
+    }
+
+    /// Override the instructed agent (defaults to the creditor agent).
+    pub fn instructed_agent_routing_number(mut self, v: impl Into<String>) -> Self {
+        self.instructed_agent_routing_number = Some(v.into());
         self
     }
 
@@ -103,7 +154,7 @@ impl Pacs008Builder {
         self
     }
 
-    /// Debtor account number (carried as `Othr/Id`).
+    /// Debtor account number (carried as `Othr/Id`). FedNow-mandatory.
     pub fn debtor_account(mut self, v: impl Into<String>) -> Self {
         self.debtor_account = Some(v.into());
         self
@@ -114,18 +165,34 @@ impl Pacs008Builder {
         self
     }
 
-    /// Creditor account number (carried as `Othr/Id`).
+    /// Creditor account number (carried as `Othr/Id`). FedNow-mandatory.
     pub fn creditor_account(mut self, v: impl Into<String>) -> Self {
         self.creditor_account = Some(v.into());
         self
     }
 
     /// Build the typed document.
-    ///
-    /// The result is not implicitly validated — run
-    /// [`crate::validate::validate_pacs008`] on it (the builder's own tests do),
-    /// so callers get the same diagnosis path for built and parsed messages.
     pub fn build(&self) -> Document {
+        let payment_type_information =
+            if self.local_instrument.is_some() || self.category_purpose.is_some() {
+                Some(PaymentTypeInformation {
+                    service_level: None,
+                    local_instrument: self.local_instrument.as_ref().map(|v| proprietary(v)),
+                    category_purpose: self.category_purpose.as_ref().map(|v| proprietary(v)),
+                })
+            } else {
+                None
+            };
+
+        let instructing = self
+            .instructing_agent_routing_number
+            .as_deref()
+            .unwrap_or(&self.debtor_agent_routing_number);
+        let instructed = self
+            .instructed_agent_routing_number
+            .as_deref()
+            .unwrap_or(&self.creditor_agent_routing_number);
+
         Document {
             xmlns: Some(NAMESPACE.to_string()),
             fi_to_fi_customer_credit_transfer: FIToFICustomerCreditTransferV08 {
@@ -135,7 +202,9 @@ impl Pacs008Builder {
                     number_of_transactions: "1".to_string(),
                     settlement_information: SettlementInstruction {
                         settlement_method: "CLRG".to_string(),
-                        clearing_system: None,
+                        clearing_system: Some(ClearingSystemIdentificationChoice {
+                            code: Some("FDN".to_string()),
+                        }),
                     },
                 },
                 credit_transfer_transaction_information: vec![CreditTransferTransaction {
@@ -144,12 +213,15 @@ impl Pacs008Builder {
                         end_to_end_identification: self.end_to_end_identification.clone(),
                         uetr: self.uetr.clone(),
                     },
+                    payment_type_information,
                     interbank_settlement_amount: ActiveCurrencyAndAmount {
                         currency: "USD".to_string(),
                         value: format_cents(self.amount_cents),
                     },
                     interbank_settlement_date: self.interbank_settlement_date.clone(),
                     charge_bearer: "SLEV".to_string(),
+                    instructing_agent: Some(agent(instructing)),
+                    instructed_agent: Some(agent(instructed)),
                     debtor: PartyIdentification {
                         name: self.debtor_name.clone(),
                     },
@@ -175,6 +247,13 @@ impl Pacs008Builder {
 /// `1250.00`-style lexical form from cents; never floating point.
 fn format_cents(cents: u64) -> String {
     format!("{}.{:02}", cents / 100, cents % 100)
+}
+
+fn proprietary(v: &str) -> CodeOrProprietaryChoice {
+    CodeOrProprietaryChoice {
+        code: None,
+        proprietary: Some(v.to_string()),
+    }
 }
 
 fn agent(routing_number: &str) -> BranchAndFinancialInstitutionIdentification {

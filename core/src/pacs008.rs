@@ -73,12 +73,22 @@ pub struct ClearingSystemIdentificationChoice {
 pub struct CreditTransferTransaction {
     #[serde(rename = "PmtId")]
     pub payment_identification: PaymentIdentification,
+    /// Optional in the base schema; mandatory in the FedNow profile
+    /// (`LclInstrm/Prtry` + `CtgyPurp/Prtry`).
+    #[serde(rename = "PmtTpInf", skip_serializing_if = "Option::is_none")]
+    pub payment_type_information: Option<PaymentTypeInformation>,
     #[serde(rename = "IntrBkSttlmAmt")]
     pub interbank_settlement_amount: ActiveCurrencyAndAmount,
     #[serde(rename = "IntrBkSttlmDt", skip_serializing_if = "Option::is_none")]
     pub interbank_settlement_date: Option<String>,
     #[serde(rename = "ChrgBr")]
     pub charge_bearer: String,
+    /// Optional in the base schema; mandatory in the FedNow profile.
+    #[serde(rename = "InstgAgt", skip_serializing_if = "Option::is_none")]
+    pub instructing_agent: Option<BranchAndFinancialInstitutionIdentification>,
+    /// Optional in the base schema; mandatory in the FedNow profile.
+    #[serde(rename = "InstdAgt", skip_serializing_if = "Option::is_none")]
+    pub instructed_agent: Option<BranchAndFinancialInstitutionIdentification>,
     #[serde(rename = "Dbtr")]
     pub debtor: PartyIdentification,
     #[serde(rename = "DbtrAcct", skip_serializing_if = "Option::is_none")]
@@ -91,6 +101,27 @@ pub struct CreditTransferTransaction {
     pub creditor: PartyIdentification,
     #[serde(rename = "CdtrAcct", skip_serializing_if = "Option::is_none")]
     pub creditor_account: Option<CashAccount>,
+}
+
+/// `<PmtTpInf>` — payment type information.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PaymentTypeInformation {
+    #[serde(rename = "SvcLvl", skip_serializing_if = "Option::is_none")]
+    pub service_level: Option<CodeOrProprietaryChoice>,
+    #[serde(rename = "LclInstrm", skip_serializing_if = "Option::is_none")]
+    pub local_instrument: Option<CodeOrProprietaryChoice>,
+    #[serde(rename = "CtgyPurp", skip_serializing_if = "Option::is_none")]
+    pub category_purpose: Option<CodeOrProprietaryChoice>,
+}
+
+/// `Cd`/`Prtry` choice used by service level, local instrument and category
+/// purpose. The FedNow profile uses `Prtry` for `LclInstrm` and `CtgyPurp`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodeOrProprietaryChoice {
+    #[serde(rename = "Cd", skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+    #[serde(rename = "Prtry", skip_serializing_if = "Option::is_none")]
+    pub proprietary: Option<String>,
 }
 
 /// `<PmtId>`

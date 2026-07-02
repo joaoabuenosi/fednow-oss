@@ -2,13 +2,13 @@
 //! own parser → validate with the full rule set. A message the builder emits must
 //! come back clean.
 
-use fednow_core::builder::Pacs008Builder;
+use fednow_core::builder::{fednow_message_id, Pacs008Builder};
 use fednow_core::pacs008;
 use fednow_core::validate::validate_pacs008;
 
 fn full_builder() -> Pacs008Builder {
     Pacs008Builder::new(
-        "M20260702BUILDER00000000000001",
+        fednow_message_id("20260702", "021040078", "BUILT0001"),
         "2026-07-02T15:30:00Z",
         "E2E-20260702-BUILT-0001",
         125_000, // $1,250.00
@@ -18,6 +18,8 @@ fn full_builder() -> Pacs008Builder {
     .instruction_identification("INSTR-BUILT-0001")
     .uetr("8a562c67-ca16-48ba-b074-65581be6f001")
     .interbank_settlement_date("2026-07-02")
+    .local_instrument("EXAMPLE")
+    .category_purpose("EXAMPLE")
     .debtor_name("Jane Example Debtor")
     .debtor_account("123456789012")
     .creditor_name("John Example Creditor")
@@ -44,9 +46,13 @@ fn built_document_carries_the_fednow_profile_constants() {
     assert!(xml.contains(r#"<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08">"#));
     assert!(xml.contains("<NbOfTxs>1</NbOfTxs>"));
     assert!(xml.contains("<SttlmMtd>CLRG</SttlmMtd>"));
+    assert!(xml.contains("<ClrSys><Cd>FDN</Cd></ClrSys>"));
     assert!(xml.contains("<ChrgBr>SLEV</ChrgBr>"));
     assert!(xml.contains(r#"<IntrBkSttlmAmt Ccy="USD">1250.00</IntrBkSttlmAmt>"#));
     assert!(xml.contains("<Cd>USABA</Cd>"));
+    // Instructing/instructed agents default to debtor/creditor agents.
+    assert!(xml.contains("<InstgAgt>"));
+    assert!(xml.contains("<InstdAgt>"));
 }
 
 #[test]
@@ -78,9 +84,9 @@ fn amounts_format_from_cents_without_floating_point() {
 }
 
 #[test]
-fn minimal_builder_omits_optional_elements() {
+fn minimal_builder_omits_unset_elements_and_reports_missing_profile_fields() {
     let xml = Pacs008Builder::new(
-        "M20260702BUILDER00000000000002",
+        fednow_message_id("20260702", "021040078", "BUILT0002"),
         "2026-07-02T15:30:00Z",
         "E2E-20260702-BUILT-0002",
         5_000, // $50.00
@@ -94,6 +100,7 @@ fn minimal_builder_omits_optional_elements() {
         "<InstrId>",
         "<UETR>",
         "<IntrBkSttlmDt>",
+        "<PmtTpInf>",
         "<DbtrAcct>",
         "<CdtrAcct>",
         "<Nm>",
@@ -101,9 +108,17 @@ fn minimal_builder_omits_optional_elements() {
         assert!(!xml.contains(absent), "{absent} must be omitted when unset");
     }
 
-    // And the minimal message still validates clean.
+    // The validator names exactly what the FedNow profile still needs.
     let doc = pacs008::parse(&xml).unwrap();
-    assert!(validate_pacs008(&doc).is_empty());
+    let found: Vec<_> = validate_pacs008(&doc).into_iter().map(|i| i.code).collect();
+    for expected in [
+        "fednow.pmttpinf.required",
+        "fednow.intrbksttlmdt.required",
+        "fednow.dbtracct.required",
+        "fednow.cdtracct.required",
+    ] {
+        assert!(found.contains(&expected), "missing {expected} in {found:?}");
+    }
 }
 
 #[test]
@@ -114,7 +129,7 @@ fn built_fields_survive_the_round_trip() {
 
     assert_eq!(
         msg.group_header.message_identification,
-        "M20260702BUILDER00000000000001"
+        "20260702021040078BUILT0001"
     );
     let tx = &msg.credit_transfer_transaction_information[0];
     assert_eq!(
