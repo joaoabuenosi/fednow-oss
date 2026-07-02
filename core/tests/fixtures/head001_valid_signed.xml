@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<AppHdr xmlns="urn:iso:std:iso:20022:tech:xsd:head.001.001.02">
+  <Fr>
+    <FIId>
+      <FinInstnId>
+        <ClrSysMmbId>
+          <ClrSysId>
+            <Cd>USABA</Cd>
+          </ClrSysId>
+          <MmbId>021040078</MmbId>
+        </ClrSysMmbId>
+      </FinInstnId>
+    </FIId>
+  </Fr>
+  <To>
+    <FIId>
+      <FinInstnId>
+        <ClrSysMmbId>
+          <ClrSysId>
+            <Cd>USABA</Cd>
+          </ClrSysId>
+          <MmbId>091000019</MmbId>
+        </ClrSysMmbId>
+      </FinInstnId>
+    </FIId>
+  </To>
+  <BizMsgIdr>B20260702FIXTURE00000000000002</BizMsgIdr>
+  <MsgDefIdr>pacs.008.001.08</MsgDefIdr>
+  <CreDt>2026-07-02T15:31:00Z</CreDt>
+  <Sgntr>
+    <ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#">
+      <ds:SignedInfo>
+        <ds:CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>
+        <ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/>
+        <ds:Reference URI="">
+          <ds:Transforms>
+            <ds:Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/>
+            <ds:Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>
+          </ds:Transforms>
+          <ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>
+          <ds:DigestValue>PLACEHOLDERDIGESTVALUEAAAAAAAAAAAAAAAAAAAAA=</ds:DigestValue>
+        </ds:Reference>
+      </ds:SignedInfo>
+      <ds:SignatureValue>UExBQ0VIT0xERVJTSUdOQVRVUkVWQUxVRQ==</ds:SignatureValue>
+    </ds:Signature>
+  </Sgntr>
+</AppHdr>

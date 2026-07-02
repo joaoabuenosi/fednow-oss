@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<AppHdr xmlns="urn:iso:std:iso:20022:tech:xsd:head.001.001.02">
+  <Fr>
+    <FIId>
+      <FinInstnId>
+        <ClrSysMmbId>
+          <ClrSysId>
+            <Cd>USABA</Cd>
+          </ClrSysId>
+          <MmbId>021040078</MmbId>
+        </ClrSysMmbId>
+      </FinInstnId>
+    </FIId>
+  </Fr>
+  <To>
+    <FIId>
+      <FinInstnId>
+        <ClrSysMmbId>
+          <ClrSysId>
+            <Cd>USABA</Cd>
+          </ClrSysId>
+          <MmbId>091000019</MmbId>
+        </ClrSysMmbId>
+      </FinInstnId>
+    </FIId>
+  </To>
+  <BizMsgIdr>B20260702FIXTURE00000000000001</BizMsgIdr>
+  <MsgDefIdr>pacs.008.001.08</MsgDefIdr>
+  <CreDt>2026-07-02T15:30:00Z</CreDt>
+</AppHdr>

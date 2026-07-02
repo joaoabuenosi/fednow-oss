@@ -45,8 +45,14 @@ indirect for FedNow specifically.*
 **(b) Detached JWS (RFC 7515/7797)** — RS256, `b64=false`, key id in the protected
 header. Community projects (e.g. `open-fednow`) implement this, but over an
 HTTP/JSON reinterpretation of FedNow, not the ISO 20022 XML-over-MQ channel — so
-this is weak evidence for the wire format. *A JWS-in-`Sgntr` variant would still be
-possible; only the spec settles it.*
+this is weak evidence for the wire format.
+
+**Update (schema evidence):** the vendored `head.001.001.02.xsd` defines
+`SignatureEnvelope` as `xs:any namespace="http://www.w3.org/2000/09/xmldsig#"
+processContents="lax"` — the `Sgntr` content is namespace-locked to W3C XMLDSig.
+A bare JWS compact string is not an element in that namespace, so profile (a)
+is now the strong default assumption; MyStandards confirmation remains the gate
+before implementation (the Fed still defines which references/transforms apply).
 
 **Invariants that hold under either profile** (safe to build against now):
 RSA ≥ 2048 with SHA-256; the signature is detached and travels with the BAH; the
