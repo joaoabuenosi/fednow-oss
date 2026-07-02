@@ -13,7 +13,7 @@
 //! All issues are collected; nothing short-circuits.
 
 use crate::pacs008::{ActiveCurrencyAndAmount, CreditTransferTransaction, Document, NAMESPACE};
-use crate::{head001, pacs002};
+use crate::{head001, pacs002, pacs028};
 
 /// Where a validation requirement comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -335,6 +335,295 @@ fn validate_status_transaction(
 
 /// Transaction statuses used by FedNow credit-transfer flows.
 const FEDNOW_TX_STATUSES: [&str; 4] = ["ACTC", "ACSC", "ACWP", "RJCT"];
+
+/// Which side sent a pacs.002 — the two FedNow profiles differ.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pacs002Direction {
+    /// `ParticipantPaymentStatus`: the accept/reject response a participant
+    /// sends. FedNow message id, at most one `StsRsnInf` with `Rsn/Cd` only,
+    /// no acceptance/settlement timestamps.
+    ParticipantToService,
+    /// `FedNowPaymentStatus`: the advice the service sends. Plain Max35Text
+    /// message id; proprietary reasons and acceptance/settlement timestamps
+    /// allowed.
+    ServiceToParticipant,
+}
+
+/// Validate a pacs.002 against the FedNow profile for the given direction.
+///
+/// Runs [`validate_pacs002`] first (base facets and common FedNow rules) and
+/// layers the direction-specific profile on top.
+pub fn validate_pacs002_direction(
+    doc: &pacs002::Document,
+    direction: Pacs002Direction,
+) -> Vec<ValidationIssue> {
+    let mut issues = validate_pacs002(doc);
+    let msg = &doc.fi_to_fi_payment_status_report;
+
+    if direction == Pacs002Direction::ParticipantToService
+        && !is_fednow_message_id(&msg.group_header.message_identification)
+    {
+        issues.push(ValidationIssue::new(
+            "fednow.msgid.format",
+            "GrpHdr/MsgId",
+            format!(
+                "'{}' is not a FedNow message id (CCYYMMDD + 9-char connection party id + 1..18-char reference)",
+                msg.group_header.message_identification
+            ),
+            RuleSource::FedNowProfile,
+        ));
+    }
+
+    if msg.original_group_information_and_status.is_some() {
+        issues.push(ValidationIssue::new(
+            "fednow.orgnlgrpinfandsts.absent",
+            "OrgnlGrpInfAndSts",
+            "the FedNow profiles report per transaction (TxInfAndSts/OrgnlGrpInf), not per group"
+                .to_string(),
+            RuleSource::FedNowProfile,
+        ));
+    }
+
+    if msg.transaction_information_and_status.len() != 1 {
+        issues.push(ValidationIssue::new(
+            "fednow.txinfandsts.one",
+            "TxInfAndSts",
+            format!(
+                "the FedNow profiles carry exactly one TxInfAndSts, found {}",
+                msg.transaction_information_and_status.len()
+            ),
+            RuleSource::FedNowProfile,
+        ));
+    }
+
+    for (i, tx) in msg.transaction_information_and_status.iter().enumerate() {
+        let base = format!("TxInfAndSts[{i}]");
+
+        validate_original_group_information(
+            &mut issues,
+            &base,
+            tx.original_group_information.as_ref(),
+        );
+
+        for (agent, code, tag) in [
+            (
+                &tx.instructing_agent,
+                "fednow.instgagt.required",
+                "InstgAgt",
+            ),
+            (&tx.instructed_agent, "fednow.instdagt.required", "InstdAgt"),
+        ] {
+            match agent {
+                None => issues.push(ValidationIssue::new(
+                    code,
+                    format!("{base}/{tag}"),
+                    format!("the FedNow profile requires {tag}"),
+                    RuleSource::FedNowProfile,
+                )),
+                Some(a) => validate_frs_agent(&mut issues, &format!("{base}/{tag}"), a),
+            }
+        }
+
+        if direction == Pacs002Direction::ParticipantToService {
+            if tx.status_reason_information.len() > 1 {
+                issues.push(ValidationIssue::new(
+                    "fednow.stsrsninf.one",
+                    format!("{base}/StsRsnInf"),
+                    "the participant status carries at most one StsRsnInf".to_string(),
+                    RuleSource::FedNowProfile,
+                ));
+            }
+            if tx
+                .status_reason_information
+                .iter()
+                .any(|s| s.reason.as_ref().is_some_and(|r| r.proprietary.is_some()))
+            {
+                issues.push(ValidationIssue::new(
+                    "fednow.stsrsn.cd",
+                    format!("{base}/StsRsnInf/Rsn"),
+                    "the participant status uses Rsn/Cd only (no proprietary reasons)".to_string(),
+                    RuleSource::FedNowProfile,
+                ));
+            }
+            if tx.acceptance_date_time.is_some() {
+                issues.push(ValidationIssue::new(
+                    "fednow.accptncdttm.absent",
+                    format!("{base}/AccptncDtTm"),
+                    "AccptncDtTm is not part of the participant status profile".to_string(),
+                    RuleSource::FedNowProfile,
+                ));
+            }
+            if tx.effective_interbank_settlement_date.is_some() {
+                issues.push(ValidationIssue::new(
+                    "fednow.fctvdt.absent",
+                    format!("{base}/FctvIntrBkSttlmDt"),
+                    "FctvIntrBkSttlmDt is not part of the participant status profile".to_string(),
+                    RuleSource::FedNowProfile,
+                ));
+            }
+        }
+    }
+
+    issues
+}
+
+fn validate_original_group_information(
+    issues: &mut Vec<ValidationIssue>,
+    base: &str,
+    orig: Option<&pacs002::OriginalGroupInformation>,
+) {
+    match orig {
+        None => issues.push(ValidationIssue::new(
+            "fednow.orgnlgrpinf.required",
+            format!("{base}/OrgnlGrpInf"),
+            "the FedNow profile requires OrgnlGrpInf identifying the original message".to_string(),
+            RuleSource::FedNowProfile,
+        )),
+        Some(o) => {
+            check_max35text(
+                issues,
+                "xsd.orgnlmsgid.length",
+                format!("{base}/OrgnlGrpInf/OrgnlMsgId"),
+                &o.original_message_identification,
+            );
+            if !is_message_definition_identifier(&o.original_message_name_identification)
+                || o.original_message_name_identification.split('.').nth(2) != Some("001")
+            {
+                issues.push(ValidationIssue::new(
+                    "fednow.orgnlmsgnmid.format",
+                    format!("{base}/OrgnlGrpInf/OrgnlMsgNmId"),
+                    format!(
+                        "'{}' does not follow the FRS message name pattern (aaaa.nnn.001.nn)",
+                        o.original_message_name_identification
+                    ),
+                    RuleSource::FedNowProfile,
+                ));
+            }
+            match &o.original_creation_date_time {
+                None => issues.push(ValidationIssue::new(
+                    "fednow.orgnlcredttm.required",
+                    format!("{base}/OrgnlGrpInf/OrgnlCreDtTm"),
+                    "the FedNow profile requires OrgnlCreDtTm".to_string(),
+                    RuleSource::FedNowProfile,
+                )),
+                Some(dt) if !is_iso_date_time(dt) => issues.push(ValidationIssue::new(
+                    "xsd.orgnlcredttm.format",
+                    format!("{base}/OrgnlGrpInf/OrgnlCreDtTm"),
+                    format!("'{dt}' is not a valid ISO 8601 date-time"),
+                    RuleSource::XsdFacet,
+                )),
+                Some(_) => {}
+            }
+        }
+    }
+}
+
+/// Validate a parsed pacs.028 payment status request against the FedNow profile.
+///
+/// An empty vector means the document passed all implemented checks.
+pub fn validate_pacs028(doc: &pacs028::Document) -> Vec<ValidationIssue> {
+    let mut issues = Vec::new();
+
+    if doc.xmlns.as_deref() != Some(pacs028::NAMESPACE) {
+        issues.push(ValidationIssue::new(
+            "xsd.namespace",
+            "Document",
+            format!(
+                "expected namespace {}, found {}",
+                pacs028::NAMESPACE,
+                doc.xmlns.as_deref().unwrap_or("(none)")
+            ),
+            RuleSource::XsdFacet,
+        ));
+    }
+
+    let msg = &doc.fi_to_fi_payment_status_request;
+    let hdr = &msg.group_header;
+
+    check_max35text(
+        &mut issues,
+        "xsd.msgid.length",
+        "GrpHdr/MsgId",
+        &hdr.message_identification,
+    );
+    if !is_fednow_message_id(&hdr.message_identification) {
+        issues.push(ValidationIssue::new(
+            "fednow.msgid.format",
+            "GrpHdr/MsgId",
+            format!(
+                "'{}' is not a FedNow message id (CCYYMMDD + 9-char connection party id + 1..18-char reference)",
+                hdr.message_identification
+            ),
+            RuleSource::FedNowProfile,
+        ));
+    }
+
+    if !is_iso_date_time(&hdr.creation_date_time) {
+        issues.push(ValidationIssue::new(
+            "xsd.credttm.format",
+            "GrpHdr/CreDtTm",
+            format!(
+                "'{}' is not a valid ISO 8601 date-time",
+                hdr.creation_date_time
+            ),
+            RuleSource::XsdFacet,
+        ));
+    }
+
+    if msg.transaction_information.len() != 1 {
+        issues.push(ValidationIssue::new(
+            "fednow.txinf.one",
+            "TxInf",
+            format!(
+                "the FedNow profile carries exactly one TxInf, found {}",
+                msg.transaction_information.len()
+            ),
+            RuleSource::FedNowProfile,
+        ));
+    }
+
+    for (i, tx) in msg.transaction_information.iter().enumerate() {
+        let base = format!("TxInf[{i}]");
+
+        validate_original_group_information(
+            &mut issues,
+            &base,
+            tx.original_group_information.as_ref(),
+        );
+
+        if let Some(uetr) = &tx.original_uetr {
+            if !is_uetr(uetr) {
+                issues.push(ValidationIssue::new(
+                    "xsd.uetr.pattern",
+                    format!("{base}/OrgnlUETR"),
+                    format!("'{uetr}' is not a lowercase UUID v4 as required by the UUIDv4Identifier pattern"),
+                    RuleSource::XsdFacet,
+                ));
+            }
+        }
+
+        for (agent, code, tag) in [
+            (
+                &tx.instructing_agent,
+                "fednow.instgagt.required",
+                "InstgAgt",
+            ),
+            (&tx.instructed_agent, "fednow.instdagt.required", "InstdAgt"),
+        ] {
+            match agent {
+                None => issues.push(ValidationIssue::new(
+                    code,
+                    format!("{base}/{tag}"),
+                    format!("the FedNow profile requires {tag}"),
+                    RuleSource::FedNowProfile,
+                )),
+                Some(a) => validate_frs_agent(&mut issues, &format!("{base}/{tag}"), a),
+            }
+        }
+    }
+
+    issues
+}
 
 /// Validate a parsed head.001.001.02 Business Application Header, returning
 /// every violation found.

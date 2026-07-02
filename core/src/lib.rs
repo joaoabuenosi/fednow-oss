@@ -3,8 +3,9 @@
 //!
 //! Current scope: parse and validate pacs.008.001.08
 //! (FIToFICustomerCreditTransferV08), pacs.002.001.10
-//! (FIToFIPaymentStatusReportV10) and head.001.001.02 (Business Application
-//! Header — carries sender/receiver routing and the message signature envelope).
+//! (FIToFIPaymentStatusReportV10, both FedNow directions), pacs.028.001.03
+//! (FIToFIPaymentStatusRequestV03) and head.001.001.02 (Business Application
+//! Header); build FedNow-conformant pacs.008.
 //!
 //! Validation happens in two layers:
 //! 1. **Structural** — [`pacs008::parse`] fails if required elements are missing or
@@ -24,9 +25,11 @@ pub mod error;
 pub mod head001;
 pub mod pacs002;
 pub mod pacs008;
+pub mod pacs028;
 pub mod validate;
 
 pub use error::ParseError;
 pub use validate::{
-    validate_head001, validate_pacs002, validate_pacs008, RuleSource, ValidationIssue,
+    validate_head001, validate_pacs002, validate_pacs002_direction, validate_pacs008,
+    validate_pacs028, Pacs002Direction, RuleSource, ValidationIssue,
 };

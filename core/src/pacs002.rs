@@ -67,6 +67,9 @@ pub struct OriginalGroupHeader {
 /// `<TxInfAndSts>` — status of one original transaction.
 #[derive(Debug, Clone, Deserialize)]
 pub struct PaymentTransaction {
+    /// Optional in the base schema; the FedNow profiles require it.
+    #[serde(rename = "OrgnlGrpInf")]
+    pub original_group_information: Option<OriginalGroupInformation>,
     #[serde(rename = "OrgnlInstrId")]
     pub original_instruction_identification: Option<String>,
     #[serde(rename = "OrgnlEndToEndId")]
@@ -82,8 +85,36 @@ pub struct PaymentTransaction {
     pub status_reason_information: Vec<StatusReasonInformation>,
     #[serde(rename = "AccptncDtTm")]
     pub acceptance_date_time: Option<String>,
+    /// Date (`Dt`) choice; used by the FedNow service advice when settled.
+    #[serde(rename = "FctvIntrBkSttlmDt")]
+    pub effective_interbank_settlement_date: Option<DateChoice>,
     #[serde(rename = "ClrSysRef")]
     pub clearing_system_reference: Option<String>,
+    /// Optional in the base schema; the FedNow profiles require it.
+    #[serde(rename = "InstgAgt")]
+    pub instructing_agent: Option<crate::pacs008::BranchAndFinancialInstitutionIdentification>,
+    /// Optional in the base schema; the FedNow profiles require it.
+    #[serde(rename = "InstdAgt")]
+    pub instructed_agent: Option<crate::pacs008::BranchAndFinancialInstitutionIdentification>,
+}
+
+/// `<OrgnlGrpInf>` — identifies the original message inside a transaction entry.
+#[derive(Debug, Clone, Deserialize)]
+pub struct OriginalGroupInformation {
+    #[serde(rename = "OrgnlMsgId")]
+    pub original_message_identification: String,
+    #[serde(rename = "OrgnlMsgNmId")]
+    pub original_message_name_identification: String,
+    /// Optional in the base schema; the FedNow profiles require it.
+    #[serde(rename = "OrgnlCreDtTm")]
+    pub original_creation_date_time: Option<String>,
+}
+
+/// `<Dt>`-only date choice.
+#[derive(Debug, Clone, Deserialize)]
+pub struct DateChoice {
+    #[serde(rename = "Dt")]
+    pub date: Option<String>,
 }
 
 /// `<StsRsnInf>` — why a transaction has its status (mandatory context on rejects).
