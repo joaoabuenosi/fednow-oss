@@ -213,9 +213,40 @@ fn overlong_status_code_violates_xsd_facet() {
 
 #[test]
 fn status_outside_the_fednow_set_is_flagged() {
-    // PDNG is a valid external code but not part of the FedNow credit-transfer flow.
-    let xml = VALID_ACSC.replace("<TxSts>ACSC</TxSts>", "<TxSts>PDNG</TxSts>");
+    // AB01 is a valid external code but not part of the FedNow credit-transfer set.
+    let xml = VALID_ACSC.replace("<TxSts>ACSC</TxSts>", "<TxSts>AB01</TxSts>");
     assert!(codes(&xml).contains(&"fednow.txsts.known"));
+}
+
+#[test]
+fn pending_and_blocked_statuses_are_accepted() {
+    for status in ["PDNG", "BLCK", "ACCC"] {
+        let xml = VALID_ACSC.replace("<TxSts>ACSC</TxSts>", &format!("<TxSts>{status}</TxSts>"));
+        assert!(
+            !codes(&xml).contains(&"fednow.txsts.known"),
+            "{status} must be in the FedNow set"
+        );
+    }
+}
+
+#[test]
+fn participant_must_not_send_acsc() {
+    let xml = VALID_RJCT.replace("<TxSts>RJCT</TxSts>", "<TxSts>ACSC</TxSts>");
+    let doc = pacs002::parse(&xml).unwrap();
+    let found: Vec<_> = validate_pacs002_direction(&doc, Pacs002Direction::ParticipantToService)
+        .into_iter()
+        .map(|i| i.code)
+        .collect();
+    assert!(found.contains(&"fednow.txsts.participant"), "{found:?}");
+    // The service advice direction allows it (the ACSC fixture is exactly that).
+    let service: Vec<_> = validate_pacs002_direction(&doc, Pacs002Direction::ServiceToParticipant)
+        .into_iter()
+        .map(|i| i.code)
+        .collect();
+    assert!(
+        !service.contains(&"fednow.txsts.participant"),
+        "{service:?}"
+    );
 }
 
 #[test]
