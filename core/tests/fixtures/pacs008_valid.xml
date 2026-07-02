@@ -2,11 +2,14 @@
 <Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08">
   <FIToFICstmrCdtTrf>
     <GrpHdr>
-      <MsgId>M20260702FIXTURE00000000000001</MsgId>
+      <MsgId>20260702021040078FIXTURE001</MsgId>
       <CreDtTm>2026-07-02T10:30:00-05:00</CreDtTm>
       <NbOfTxs>1</NbOfTxs>
       <SttlmInf>
         <SttlmMtd>CLRG</SttlmMtd>
+        <ClrSys>
+          <Cd>FDN</Cd>
+        </ClrSys>
       </SttlmInf>
     </GrpHdr>
     <CdtTrfTxInf>
@@ -15,9 +18,37 @@
         <EndToEndId>E2E-20260702-0001</EndToEndId>
         <UETR>8a562c67-ca16-48ba-b074-65581be6f001</UETR>
       </PmtId>
+      <PmtTpInf>
+        <LclInstrm>
+          <Prtry>EXAMPLE</Prtry>
+        </LclInstrm>
+        <CtgyPurp>
+          <Prtry>EXAMPLE</Prtry>
+        </CtgyPurp>
+      </PmtTpInf>
       <IntrBkSttlmAmt Ccy="USD">1250.00</IntrBkSttlmAmt>
       <IntrBkSttlmDt>2026-07-02</IntrBkSttlmDt>
       <ChrgBr>SLEV</ChrgBr>
+      <InstgAgt>
+        <FinInstnId>
+          <ClrSysMmbId>
+            <ClrSysId>
+              <Cd>USABA</Cd>
+            </ClrSysId>
+            <MmbId>021040078</MmbId>
+          </ClrSysMmbId>
+        </FinInstnId>
+      </InstgAgt>
+      <InstdAgt>
+        <FinInstnId>
+          <ClrSysMmbId>
+            <ClrSysId>
+              <Cd>USABA</Cd>
+            </ClrSysId>
+            <MmbId>091000019</MmbId>
+          </ClrSysMmbId>
+        </FinInstnId>
+      </InstdAgt>
       <Dbtr>
         <Nm>Jane Example Debtor</Nm>
       </Dbtr>

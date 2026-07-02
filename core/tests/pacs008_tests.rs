@@ -22,7 +22,7 @@ fn parses_valid_fixture_into_typed_model() {
     let msg = &doc.fi_to_fi_customer_credit_transfer;
     assert_eq!(
         msg.group_header.message_identification,
-        "M20260702FIXTURE00000000000001"
+        "20260702021040078FIXTURE001"
     );
     assert_eq!(
         msg.group_header.settlement_information.settlement_method,
@@ -67,7 +67,7 @@ fn malformed_xml_is_a_parse_error() {
 #[test]
 fn missing_required_element_is_a_parse_error() {
     // Removing GrpHdr/MsgId breaks required cardinality -> structural error.
-    let xml = VALID.replace("<MsgId>M20260702FIXTURE00000000000001</MsgId>", "");
+    let xml = VALID.replace("<MsgId>20260702021040078FIXTURE001</MsgId>", "");
     assert!(pacs008::parse(&xml).is_err());
 }
 
@@ -80,10 +80,89 @@ fn wrong_namespace_is_flagged() {
 #[test]
 fn msgid_longer_than_35_chars_violates_max35text() {
     let xml = VALID.replace(
-        "M20260702FIXTURE00000000000001",
-        "M20260702FIXTURE00000000000001XXXXXX", // 36 chars
+        "20260702021040078FIXTURE001",
+        "20260702021040078FIXTURE001XXXXXXXXX", // 36 chars
     );
     assert!(codes(&xml).contains(&"xsd.msgid.length"));
+}
+
+#[test]
+fn non_fednow_msgid_shape_violates_the_profile() {
+    // Letter in the date part breaks CCYYMMDD + connection party + reference.
+    let xml = VALID.replace(
+        "<MsgId>20260702021040078FIXTURE001</MsgId>",
+        "<MsgId>M20260702FIXTURE00000001</MsgId>",
+    );
+    assert!(codes(&xml).contains(&"fednow.msgid.format"));
+}
+
+#[test]
+fn missing_clearing_system_fdn_is_flagged() {
+    let xml = VALID.replace(
+        "<ClrSys>\n          <Cd>FDN</Cd>\n        </ClrSys>\n      ",
+        "",
+    );
+    assert!(codes(&xml).contains(&"fednow.clrsys.fdn"));
+}
+
+#[test]
+fn missing_payment_type_information_is_flagged() {
+    let xml = VALID.replace(
+        "<PmtTpInf>\n        <LclInstrm>\n          <Prtry>EXAMPLE</Prtry>\n        </LclInstrm>\n        <CtgyPurp>\n          <Prtry>EXAMPLE</Prtry>\n        </CtgyPurp>\n      </PmtTpInf>\n      ",
+        "",
+    );
+    assert!(codes(&xml).contains(&"fednow.pmttpinf.required"));
+}
+
+#[test]
+fn payment_type_information_without_ctgypurp_is_flagged() {
+    let xml = VALID.replace(
+        "<CtgyPurp>\n          <Prtry>EXAMPLE</Prtry>\n        </CtgyPurp>\n      ",
+        "",
+    );
+    assert!(codes(&xml).contains(&"fednow.pmttpinf.ctgypurp"));
+}
+
+#[test]
+fn missing_instructing_agent_is_flagged() {
+    let xml = VALID.replace(
+        "<InstgAgt>\n        <FinInstnId>\n          <ClrSysMmbId>\n            <ClrSysId>\n              <Cd>USABA</Cd>\n            </ClrSysId>\n            <MmbId>021040078</MmbId>\n          </ClrSysMmbId>\n        </FinInstnId>\n      </InstgAgt>\n      ",
+        "",
+    );
+    assert!(codes(&xml).contains(&"fednow.instgagt.required"));
+}
+
+#[test]
+fn agent_without_usaba_scheme_is_flagged() {
+    let xml = VALID.replace(
+        "<ClrSysId>\n              <Cd>USABA</Cd>\n            </ClrSysId>\n            <MmbId>091000019</MmbId>",
+        "<MmbId>091000019</MmbId>",
+    );
+    assert!(codes(&xml).contains(&"fednow.agent.usaba"));
+}
+
+#[test]
+fn missing_settlement_date_is_flagged() {
+    let xml = VALID.replace("<IntrBkSttlmDt>2026-07-02</IntrBkSttlmDt>\n      ", "");
+    assert!(codes(&xml).contains(&"fednow.intrbksttlmdt.required"));
+}
+
+#[test]
+fn missing_creditor_account_is_flagged() {
+    let xml = VALID.replace(
+        "<CdtrAcct>\n        <Id>\n          <Othr>\n            <Id>987654321000</Id>\n          </Othr>\n        </Id>\n      </CdtrAcct>\n    ",
+        "",
+    );
+    assert!(codes(&xml).contains(&"fednow.cdtracct.required"));
+}
+
+#[test]
+fn amount_above_14_total_digits_violates_fednow_profile() {
+    let xml = VALID.replace(
+        ">1250.00</IntrBkSttlmAmt>",
+        ">1234567890123.45</IntrBkSttlmAmt>", // 15 total digits
+    );
+    assert!(codes(&xml).contains(&"fednow.amount.digits"));
 }
 
 #[test]
