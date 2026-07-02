@@ -26,21 +26,15 @@ jobs:
         run: cargo test --workspace
 
   xsd-validate:
-    # Validates XML fixtures against the official ISO 20022 XSD, but only when the
-    # schema has been vendored into core/schemas/ (see core/schemas/README.md).
-    name: XSD validation (optional)
+    # Validates the valid XML fixtures against the official ISO 20022 schemas
+    # vendored in core/schemas/ (see core/schemas/README.md for provenance).
+    name: XSD validation
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate fixtures against pacs.008.001.08.xsd
-        run: |
-          if [ -f core/schemas/pacs.008.001.08.xsd ]; then
-            sudo apt-get update -qq && sudo apt-get install -y -qq libxml2-utils
-            for f in core/tests/fixtures/pacs008_valid*.xml; do
-              echo "validating $f"
-              xmllint --noout --schema core/schemas/pacs.008.001.08.xsd "$f"
-            done
-          else
-            echo "No XSD vendored yet (core/schemas/pacs.008.001.08.xsd absent) — skipping."
-            echo "See core/schemas/README.md for how to obtain it."
-          fi
+      - name: Install xmllint
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libxml2-utils
+      - name: pacs.008 fixtures
+        run: xmllint --noout --schema core/schemas/pacs.008.001.08.xsd core/tests/fixtures/pacs008_valid*.xml
+      - name: pacs.002 fixtures
+        run: xmllint --noout --schema core/schemas/pacs.002.001.10.xsd core/tests/fixtures/pacs002_valid*.xml
