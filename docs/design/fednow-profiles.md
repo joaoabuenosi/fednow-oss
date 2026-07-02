@@ -34,9 +34,15 @@ Mandatory: `MktPrctc` (fixed registry URL + FedNow id). `Fr`/`To`: `FIId` only,
 - Amount: USD only; **max 14 total digits, max 2 fraction digits**, ≥ 0.
 - Agents carry `ClrSysMmbId` with `ClrSysId/Cd` = `USABA` + 9-digit routing number.
 - Optional survivors: `UltmtDbtr`, `InitgPty`, `UltmtCdtr`, `Purp`, `RltdRmtInf`, `RmtInf`.
-- The exact code values for `LclInstrm/Prtry` and `CtgyPurp/Prtry` come from the
-  FedNow code list (Technical Specifications) — validation currently enforces
-  presence, not specific values.
+- Code values (from the Release 1 sample set, uniform across all 31 samples):
+  `LclInstrm/Prtry` = **`FDNA`**; `CtgyPurp/Prtry` ∈ {**`CONS`**, **`BIZZ`**}
+  (consumer / business). The full code list in the Technical Specifications may
+  extend the category purposes.
+- **Conformance check (July 2026):** all 30 structurally valid Release 1
+  pacs.008 samples parse and validate clean with fednow-core; the one
+  intentionally malformed sample (MessageReject scenario) is correctly rejected
+  at parse. Run locally with
+  `cargo run -p fednow-core --example validate -- <file.xml>`.
 
 ## pacs.002.001.10 — TWO distinct profiles
 

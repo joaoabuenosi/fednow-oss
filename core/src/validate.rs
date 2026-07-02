@@ -336,6 +336,15 @@ fn validate_status_transaction(
 /// Transaction statuses used by FedNow credit-transfer flows.
 const FEDNOW_TX_STATUSES: [&str; 4] = ["ACTC", "ACSC", "ACWP", "RJCT"];
 
+/// `PmtTpInf/LclInstrm/Prtry` for customer credit transfers (uniform across
+/// every Release 1 sample message).
+const FEDNOW_LOCAL_INSTRUMENT: &str = "FDNA";
+
+/// Known `PmtTpInf/CtgyPurp/Prtry` values for customer credit transfers,
+/// observed in the Release 1 sample set (consumer / business). The full code
+/// list lives in the FedNow Technical Specifications and may extend this.
+const FEDNOW_CATEGORY_PURPOSES: [&str; 2] = ["CONS", "BIZZ"];
+
 /// Which side sent a pacs.002 — the two FedNow profiles differ.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Pacs002Direction {
@@ -905,31 +914,50 @@ fn validate_transaction(
             RuleSource::FedNowProfile,
         )),
         Some(pt) => {
-            if pt
+            match pt
                 .local_instrument
                 .as_ref()
-                .and_then(|c| c.proprietary.as_ref())
-                .is_none()
+                .and_then(|c| c.proprietary.as_deref())
             {
-                issues.push(ValidationIssue::new(
+                None => issues.push(ValidationIssue::new(
                     "fednow.pmttpinf.lclinstrm",
                     format!("{base}/PmtTpInf/LclInstrm"),
                     "the FedNow profile requires LclInstrm/Prtry".to_string(),
                     RuleSource::FedNowProfile,
-                ));
+                )),
+                Some(v) if v != FEDNOW_LOCAL_INSTRUMENT => issues.push(ValidationIssue::new(
+                    "fednow.lclinstrm.fdna",
+                    format!("{base}/PmtTpInf/LclInstrm/Prtry"),
+                    format!(
+                        "customer credit transfers use LclInstrm/Prtry '{FEDNOW_LOCAL_INSTRUMENT}', found '{v}'"
+                    ),
+                    RuleSource::FedNowProfile,
+                )),
+                Some(_) => {}
             }
-            if pt
+            match pt
                 .category_purpose
                 .as_ref()
-                .and_then(|c| c.proprietary.as_ref())
-                .is_none()
+                .and_then(|c| c.proprietary.as_deref())
             {
-                issues.push(ValidationIssue::new(
+                None => issues.push(ValidationIssue::new(
                     "fednow.pmttpinf.ctgypurp",
                     format!("{base}/PmtTpInf/CtgyPurp"),
                     "the FedNow profile requires CtgyPurp/Prtry".to_string(),
                     RuleSource::FedNowProfile,
-                ));
+                )),
+                Some(v) if !FEDNOW_CATEGORY_PURPOSES.contains(&v) => {
+                    issues.push(ValidationIssue::new(
+                        "fednow.ctgypurp.known",
+                        format!("{base}/PmtTpInf/CtgyPurp/Prtry"),
+                        format!(
+                            "'{v}' is not a known FedNow category purpose ({})",
+                            FEDNOW_CATEGORY_PURPOSES.join(", ")
+                        ),
+                        RuleSource::FedNowProfile,
+                    ))
+                }
+                Some(_) => {}
             }
         }
     }

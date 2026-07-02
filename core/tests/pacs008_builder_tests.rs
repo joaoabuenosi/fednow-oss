@@ -18,8 +18,7 @@ fn full_builder() -> Pacs008Builder {
     .instruction_identification("INSTR-BUILT-0001")
     .uetr("8a562c67-ca16-48ba-b074-65581be6f001")
     .interbank_settlement_date("2026-07-02")
-    .local_instrument("EXAMPLE")
-    .category_purpose("EXAMPLE")
+    .category_purpose("CONS")
     .debtor_name("Jane Example Debtor")
     .debtor_account("123456789012")
     .creditor_name("John Example Creditor")
@@ -100,19 +99,21 @@ fn minimal_builder_omits_unset_elements_and_reports_missing_profile_fields() {
         "<InstrId>",
         "<UETR>",
         "<IntrBkSttlmDt>",
-        "<PmtTpInf>",
+        "<CtgyPurp>",
         "<DbtrAcct>",
         "<CdtrAcct>",
         "<Nm>",
     ] {
         assert!(!xml.contains(absent), "{absent} must be omitted when unset");
     }
+    // LclInstrm is always emitted with the FedNow default.
+    assert!(xml.contains("<LclInstrm><Prtry>FDNA</Prtry></LclInstrm>"));
 
     // The validator names exactly what the FedNow profile still needs.
     let doc = pacs008::parse(&xml).unwrap();
     let found: Vec<_> = validate_pacs008(&doc).into_iter().map(|i| i.code).collect();
     for expected in [
-        "fednow.pmttpinf.required",
+        "fednow.pmttpinf.ctgypurp",
         "fednow.intrbksttlmdt.required",
         "fednow.dbtracct.required",
         "fednow.cdtracct.required",

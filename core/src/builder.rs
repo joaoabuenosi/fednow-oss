@@ -123,15 +123,15 @@ impl Pacs008Builder {
         self
     }
 
-    /// `PmtTpInf/LclInstrm/Prtry`. FedNow-mandatory; the concrete code values
-    /// come from the FedNow code list (Technical Specifications).
+    /// Override `PmtTpInf/LclInstrm/Prtry` (defaults to `FDNA`, the value used
+    /// by every Release 1 customer-credit-transfer sample).
     pub fn local_instrument(mut self, v: impl Into<String>) -> Self {
         self.local_instrument = Some(v.into());
         self
     }
 
-    /// `PmtTpInf/CtgyPurp/Prtry`. FedNow-mandatory; the concrete code values
-    /// come from the FedNow code list (Technical Specifications).
+    /// `PmtTpInf/CtgyPurp/Prtry`. FedNow-mandatory: `CONS` (consumer) or
+    /// `BIZZ` (business) in the Release 1 sample set.
     pub fn category_purpose(mut self, v: impl Into<String>) -> Self {
         self.category_purpose = Some(v.into());
         self
@@ -173,16 +173,13 @@ impl Pacs008Builder {
 
     /// Build the typed document.
     pub fn build(&self) -> Document {
-        let payment_type_information =
-            if self.local_instrument.is_some() || self.category_purpose.is_some() {
-                Some(PaymentTypeInformation {
-                    service_level: None,
-                    local_instrument: self.local_instrument.as_ref().map(|v| proprietary(v)),
-                    category_purpose: self.category_purpose.as_ref().map(|v| proprietary(v)),
-                })
-            } else {
-                None
-            };
+        let payment_type_information = Some(PaymentTypeInformation {
+            service_level: None,
+            local_instrument: Some(proprietary(
+                self.local_instrument.as_deref().unwrap_or("FDNA"),
+            )),
+            category_purpose: self.category_purpose.as_ref().map(|v| proprietary(v)),
+        });
 
         let instructing = self
             .instructing_agent_routing_number
