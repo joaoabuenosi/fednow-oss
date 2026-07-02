@@ -1,17 +1,18 @@
-//! Rule validation for parsed pacs.008 documents.
+//! Rule validation for parsed ISO 20022 documents (pacs.008, pacs.002).
 //!
 //! Three rule sources, so a violation can be traced to where the requirement
 //! comes from:
-//! - [`RuleSource::XsdFacet`] — lexical facets of pacs.008.001.08 (lengths,
+//! - [`RuleSource::XsdFacet`] — lexical facets of the message schema (lengths,
 //!   patterns, enumerations, numeric limits).
 //! - [`RuleSource::IsoRule`] — ISO 20022 cross-field rules the schema cannot
 //!   express (e.g. `NbOfTxs` must equal the transaction count).
 //! - [`RuleSource::FedNowProfile`] — the FedNow Service profile (USD only,
 //!   settlement method CLRG, charge bearer SLEV, ABA routing-number checksum,
-//!   cent-precision amounts).
+//!   cent-precision amounts, mandatory transaction status, reject reasons).
 //!
 //! All issues are collected; nothing short-circuits.
 
+use crate::pacs002;
 use crate::pacs008::{ActiveCurrencyAndAmount, CreditTransferTransaction, Document, NAMESPACE};
 
 /// Where a validation requirement comes from.
@@ -135,6 +136,170 @@ pub fn validate_pacs008(doc: &Document) -> Vec<ValidationIssue> {
 
     issues
 }
+
+/// Validate a parsed pacs.002 document, returning every violation found.
+///
+/// An empty vector means the document passed all implemented checks.
+pub fn validate_pacs002(doc: &pacs002::Document) -> Vec<ValidationIssue> {
+    let mut issues = Vec::new();
+
+    if doc.xmlns.as_deref() != Some(pacs002::NAMESPACE) {
+        issues.push(ValidationIssue::new(
+            "xsd.namespace",
+            "Document",
+            format!(
+                "expected namespace {}, found {}",
+                pacs002::NAMESPACE,
+                doc.xmlns.as_deref().unwrap_or("(none)")
+            ),
+            RuleSource::XsdFacet,
+        ));
+    }
+
+    let msg = &doc.fi_to_fi_payment_status_report;
+    let hdr = &msg.group_header;
+
+    check_max35text(
+        &mut issues,
+        "xsd.msgid.length",
+        "GrpHdr/MsgId",
+        &hdr.message_identification,
+    );
+
+    if !is_iso_date_time(&hdr.creation_date_time) {
+        issues.push(ValidationIssue::new(
+            "xsd.credttm.format",
+            "GrpHdr/CreDtTm",
+            format!(
+                "'{}' is not a valid ISO 8601 date-time",
+                hdr.creation_date_time
+            ),
+            RuleSource::XsdFacet,
+        ));
+    }
+
+    if let Some(orig) = &msg.original_group_information_and_status {
+        check_max35text(
+            &mut issues,
+            "xsd.orgnlmsgid.length",
+            "OrgnlGrpInfAndSts/OrgnlMsgId",
+            &orig.original_message_identification,
+        );
+        check_max35text(
+            &mut issues,
+            "xsd.orgnlmsgnmid.length",
+            "OrgnlGrpInfAndSts/OrgnlMsgNmId",
+            &orig.original_message_name_identification,
+        );
+    }
+
+    for (i, tx) in msg.transaction_information_and_status.iter().enumerate() {
+        validate_status_transaction(&mut issues, i, tx);
+    }
+
+    issues
+}
+
+fn validate_status_transaction(
+    issues: &mut Vec<ValidationIssue>,
+    i: usize,
+    tx: &pacs002::PaymentTransaction,
+) {
+    let base = format!("TxInfAndSts[{i}]");
+
+    if let Some(e2e) = &tx.original_end_to_end_identification {
+        check_max35text(
+            issues,
+            "xsd.orgnlendtoendid.length",
+            format!("{base}/OrgnlEndToEndId"),
+            e2e,
+        );
+    }
+
+    if let Some(uetr) = &tx.original_uetr {
+        if !is_uetr(uetr) {
+            issues.push(ValidationIssue::new(
+                "xsd.uetr.pattern",
+                format!("{base}/OrgnlUETR"),
+                format!("'{uetr}' is not a lowercase UUID v4 as required by the UUIDv4Identifier pattern"),
+                RuleSource::XsdFacet,
+            ));
+        }
+    }
+
+    match tx.transaction_status.as_deref() {
+        None => issues.push(ValidationIssue::new(
+            "fednow.txsts.required",
+            format!("{base}/TxSts"),
+            "the FedNow profile requires TxSts on every transaction status entry".to_string(),
+            RuleSource::FedNowProfile,
+        )),
+        Some(status) => {
+            // ExternalPaymentTransactionStatus1Code is an external code list;
+            // the schema itself only constrains the length.
+            if status.is_empty() || status.chars().count() > 4 {
+                issues.push(ValidationIssue::new(
+                    "xsd.txsts.length",
+                    format!("{base}/TxSts"),
+                    format!(
+                        "'{status}' violates the external status code length (1..4 characters)"
+                    ),
+                    RuleSource::XsdFacet,
+                ));
+            } else if !FEDNOW_TX_STATUSES.contains(&status) {
+                // Credit-transfer statuses used by the FedNow flows: participant
+                // accept/reject (ACTC/RJCT), service advice settled (ACSC), and
+                // accept-without-posting (ACWP).
+                issues.push(ValidationIssue::new(
+                    "fednow.txsts.known",
+                    format!("{base}/TxSts"),
+                    format!(
+                        "'{status}' is not a FedNow credit-transfer status ({})",
+                        FEDNOW_TX_STATUSES.join(", ")
+                    ),
+                    RuleSource::FedNowProfile,
+                ));
+            }
+
+            if status == "RJCT" && !tx.status_reason_information.iter().any(|s| s.has_reason()) {
+                issues.push(ValidationIssue::new(
+                    "fednow.rjct.reason",
+                    format!("{base}/StsRsnInf"),
+                    "a rejection (TxSts RJCT) must carry a status reason code".to_string(),
+                    RuleSource::FedNowProfile,
+                ));
+            }
+        }
+    }
+
+    for (r, rsn) in tx.status_reason_information.iter().enumerate() {
+        if let Some(code) = rsn.reason.as_ref().and_then(|x| x.code.as_deref()) {
+            // ExternalStatusReason1Code: external list, schema constrains 1..4 chars.
+            if code.is_empty() || code.chars().count() > 4 {
+                issues.push(ValidationIssue::new(
+                    "xsd.stsrsn.length",
+                    format!("{base}/StsRsnInf[{r}]/Rsn/Cd"),
+                    format!("'{code}' violates the external reason code length (1..4 characters)"),
+                    RuleSource::XsdFacet,
+                ));
+            }
+        }
+    }
+
+    if let Some(dt) = &tx.acceptance_date_time {
+        if !is_iso_date_time(dt) {
+            issues.push(ValidationIssue::new(
+                "xsd.accptncdttm.format",
+                format!("{base}/AccptncDtTm"),
+                format!("'{dt}' is not a valid ISO 8601 date-time"),
+                RuleSource::XsdFacet,
+            ));
+        }
+    }
+}
+
+/// Transaction statuses used by FedNow credit-transfer flows.
+const FEDNOW_TX_STATUSES: [&str; 4] = ["ACTC", "ACSC", "ACWP", "RJCT"];
 
 fn validate_transaction(
     issues: &mut Vec<ValidationIssue>,
