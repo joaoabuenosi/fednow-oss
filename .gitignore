@@ -11,6 +11,9 @@
 Thumbs.db
 .DS_Store
 
+# Local-only private notes (never committed)
+.private/
+
 # Local-only files (never commit credentials or certificates)
 *.pem
 *.p12
