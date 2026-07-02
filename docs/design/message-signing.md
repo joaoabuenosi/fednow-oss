@@ -47,18 +47,35 @@ header. Community projects (e.g. `open-fednow`) implement this, but over an
 HTTP/JSON reinterpretation of FedNow, not the ISO 20022 XML-over-MQ channel — so
 this is weak evidence for the wire format.
 
-**Update (schema evidence):** the vendored `head.001.001.02.xsd` defines
+**Update 1 (schema evidence):** the vendored `head.001.001.02.xsd` defines
 `SignatureEnvelope` as `xs:any namespace="http://www.w3.org/2000/09/xmldsig#"
-processContents="lax"` — the `Sgntr` content is namespace-locked to W3C XMLDSig.
-A bare JWS compact string is not an element in that namespace, so profile (a)
-is now the strong default assumption; MyStandards confirmation remains the gate
-before implementation (the Fed still defines which references/transforms apply).
+processContents="lax"` — in the *base* ISO schema, `Sgntr` content is
+namespace-locked to W3C XMLDSig.
+
+**Update 2 (FedNow usage guideline + envelope evidence, July 2026):** inspection
+of the FedNow Service Release 1 usage guidelines on MyStandards indicates the
+FedNow BAH profile *removes* the `Sgntr` element (alongside `CharSet`,
+`PssblDplct` and `Prty`), and the FedNow MQ technical envelope
+(`FedNowIncoming`/`FedNowOutgoing`: a typed wrapper of `AppHdr` + `Document`,
+plus an open `FedNowTechnicalHeader`) has **no per-message signature element**
+either — its signature-related members exist only for key-exchange operations
+(`FedNowKeyID` up to 300 alphanumeric chars; algorithm expressed as strings like
+`RSA-2048`). Consequence: the signature almost certainly travels **outside the
+XML business message** — as an MQ message property or in the technical header —
+which flips the default assumption from (a) XMLDSig to **(b) a detached
+JWS-style signature over the wire bytes**. The exact transport slot, protected
+header and signing input remain to be confirmed in the Technical Specifications
+document (not in the per-message guidelines).
 
 **Invariants that hold under either profile** (safe to build against now):
-RSA ≥ 2048 with SHA-256; the signature is detached and travels with the BAH; the
-signer is identified by a key id known to the service; signing must operate on the
-exact wire bytes (or a defined canonicalization of them) — never on re-serialized
-models.
+RSA ≥ 2048 with SHA-256; the signature is detached; the signer is identified by
+a `FedNowKeyID` registered with the service; signing must operate on the exact
+wire bytes — never on re-serialized models.
+
+**Licensing note:** MyStandards usage-guideline content and the Fed's envelope
+schemas are access-controlled/confidential material. This repo records only the
+minimal interoperability facts needed to implement, never reproduces them, and
+vendors only base ISO 20022 schemas.
 
 ## Sequencing decision
 
@@ -72,6 +89,10 @@ models.
    read the message-signing section of the Technical Specifications. We need:
    signature envelope shape, canonicalization method, reference/digest structure,
    and how the key id is expressed.
+2b. **Roadmap note:** MyStandards also lists a planned **"FedNow Service 2026
+   Enhanced Messages Release" (Q4 2026)** — track it; message versions may move
+   beyond the 2019 set this crate currently targets.
+
 3. **Then — implement the confirmed profile** in a `sign` module:
    - If XMLDSig: implement **exclusive C14N in pure Rust** over the quick-xml event
      stream, scoped to the subset ISO 20022 messages actually use (no DTDs, no
