@@ -344,6 +344,61 @@ pub fn validate_head001(hdr: &head001::AppHdr) -> Vec<ValidationIssue> {
             ),
             RuleSource::IsoRule,
         ));
+    } else if hdr.message_definition_identifier.split('.').nth(2) != Some("001") {
+        // Federal Reserve Financial Services fix the message variant at 001.
+        issues.push(ValidationIssue::new(
+            "fednow.msgdefidr.variant",
+            "AppHdr/MsgDefIdr",
+            format!(
+                "'{}' has a message variant other than 001, which FedNow does not use",
+                hdr.message_definition_identifier
+            ),
+            RuleSource::FedNowProfile,
+        ));
+    }
+
+    match &hdr.market_practice {
+        None => issues.push(ValidationIssue::new(
+            "fednow.mktprctc.required",
+            "AppHdr/MktPrctc",
+            "the FedNow profile requires MktPrctc (market practice) on every BAH".to_string(),
+            RuleSource::FedNowProfile,
+        )),
+        Some(mp) => {
+            if mp.registry != FEDNOW_MARKET_PRACTICE_REGISTRY {
+                issues.push(ValidationIssue::new(
+                    "fednow.mktprctc.regy",
+                    "AppHdr/MktPrctc/Regy",
+                    format!(
+                        "registry must be '{FEDNOW_MARKET_PRACTICE_REGISTRY}', found '{}'",
+                        mp.registry
+                    ),
+                    RuleSource::FedNowProfile,
+                ));
+            }
+            if !is_fednow_market_practice_id(&mp.identification) {
+                issues.push(ValidationIssue::new(
+                    "fednow.mktprctc.id",
+                    "AppHdr/MktPrctc/Id",
+                    format!(
+                        "'{}' does not match the FedNow market practice identifier (frb.fednow[.xxx].01)",
+                        mp.identification
+                    ),
+                    RuleSource::FedNowProfile,
+                ));
+            }
+        }
+    }
+
+    if hdr.signature.is_some() {
+        // The FedNow profile removes Sgntr from the BAH; signatures travel
+        // outside the XML business message.
+        issues.push(ValidationIssue::new(
+            "fednow.sgntr.outofband",
+            "AppHdr/Sgntr",
+            "the FedNow profile does not use the BAH signature envelope".to_string(),
+            RuleSource::FedNowProfile,
+        ));
     }
 
     if !is_iso_date_time(&hdr.creation_date) {
@@ -373,6 +428,13 @@ pub fn validate_head001(hdr: &head001::AppHdr) -> Vec<ValidationIssue> {
                 "AppHdr/CpyDplct",
                 format!("'{cpy}' is not one of CODU, COPY, DUPL"),
                 RuleSource::XsdFacet,
+            ));
+        } else if cpy != "DUPL" {
+            issues.push(ValidationIssue::new(
+                "fednow.cpydplct.dupl",
+                "AppHdr/CpyDplct",
+                format!("the FedNow profile restricts CpyDplct to DUPL, found '{cpy}'"),
+                RuleSource::FedNowProfile,
             ));
         }
     }
@@ -409,13 +471,64 @@ fn validate_party44(issues: &mut Vec<ValidationIssue>, tag: &str, party: &head00
                 .financial_institution_identification
                 .clearing_system_member_identification
             {
-                validate_routing_number(
+                if member.clearing_system_identification.is_some() {
+                    // The FedNow BAH profile strips ClrSysId; only MmbId remains.
+                    issues.push(ValidationIssue::new(
+                        "fednow.party.clrsysid",
+                        format!("AppHdr/{tag}/FIId/FinInstnId/ClrSysMmbId/ClrSysId"),
+                        "the FedNow BAH carries only MmbId inside ClrSysMmbId (no ClrSysId)"
+                            .to_string(),
+                        RuleSource::FedNowProfile,
+                    ));
+                }
+                validate_connection_party_id(
                     issues,
                     format!("AppHdr/{tag}/FIId/FinInstnId/ClrSysMmbId/MmbId"),
                     &member.member_identification,
                 );
             }
         }
+    }
+}
+
+/// FedNow BAH `MmbId` is a Connection Party Identifier: 9 uppercase
+/// alphanumerics (a routing number, an ETI, or a FedNow-assigned id). When it is
+/// all digits it is a routing number and the ABA check digit must hold.
+fn validate_connection_party_id(issues: &mut Vec<ValidationIssue>, path: String, id: &str) {
+    let is_conn_party = id.len() == 9
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_digit() || b.is_ascii_uppercase());
+    if !is_conn_party {
+        issues.push(ValidationIssue::new(
+            "fednow.connparty.format",
+            path,
+            format!("'{id}' is not a 9-character connection party identifier ([A-Z0-9]{{9}})"),
+            RuleSource::FedNowProfile,
+        ));
+    } else if id.bytes().all(|b| b.is_ascii_digit()) && !aba_checksum_ok(id) {
+        issues.push(ValidationIssue::new(
+            "fednow.aba.checksum",
+            path,
+            format!("'{id}' fails the ABA routing-number check digit (weights 3-7-1, mod 10)"),
+            RuleSource::FedNowProfile,
+        ));
+    }
+}
+
+/// Fixed `MktPrctc/Regy` value in the FedNow profile.
+const FEDNOW_MARKET_PRACTICE_REGISTRY: &str =
+    "www2.swift.com/mystandards/#/group/Federal_Reserve_Financial_Services/FedNow_Service";
+
+/// FedNow `MktPrctc/Id`: `frb.fednow.01` or `frb.fednow.<3 lowercase letters>.01`.
+fn is_fednow_market_practice_id(s: &str) -> bool {
+    let parts: Vec<&str> = s.split('.').collect();
+    match parts.as_slice() {
+        ["frb", "fednow", "01"] => true,
+        ["frb", "fednow", ctx, "01"] => {
+            ctx.len() == 3 && ctx.bytes().all(|b| b.is_ascii_lowercase())
+        }
+        _ => false,
     }
 }
 

@@ -52,10 +52,10 @@ this is weak evidence for the wire format.
 processContents="lax"` — in the *base* ISO schema, `Sgntr` content is
 namespace-locked to W3C XMLDSig.
 
-**Update 2 (FedNow usage guideline + envelope evidence, July 2026):** inspection
-of the FedNow Service Release 1 usage guidelines on MyStandards indicates the
-FedNow BAH profile *removes* the `Sgntr` element (alongside `CharSet`,
-`PssblDplct` and `Prty`), and the FedNow MQ technical envelope
+**Update 2 (FedNow usage guideline + envelope evidence, July 2026 — CONFIRMED):**
+the FedNow Service Release 1 BAH usage guideline (verified against the
+MyStandards schema export) *removes* the `Sgntr` element entirely (alongside
+`CharSet`, `PssblDplct` and `Prty`), and the FedNow MQ technical envelope
 (`FedNowIncoming`/`FedNowOutgoing`: a typed wrapper of `AppHdr` + `Document`,
 plus an open `FedNowTechnicalHeader`) has **no per-message signature element**
 either — its signature-related members exist only for key-exchange operations
