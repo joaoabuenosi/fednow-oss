@@ -1,16 +1,16 @@
 //! Typed model and parser for head.001.001.02 (Business Application Header, "BAH").
 //!
 //! Every business message exchanged with the FedNow Service carries a BAH: it
-//! identifies sender and receiver (routing numbers under `FIId`), names the
-//! enclosed message (`MsgDefIdr`, e.g. `pacs.008.001.08`) and carries the
-//! message signature in the `Sgntr` envelope. Note that the schema constrains
-//! `Sgntr` content to the W3C XMLDSig namespace (`xs:any` over
-//! `http://www.w3.org/2000/09/xmldsig#`, lax).
+//! identifies sender and receiver (connection party identifiers under `FIId`)
+//! and names the enclosed message (`MsgDefIdr`, e.g. `pacs.008.001.08`).
 //!
-//! The typed model records *whether* a signature is present; the signature
-//! bytes themselves must never be round-tripped through a model (re-serialization
-//! drift breaks digests), so [`sgntr_raw`] extracts the raw inner XML of the
-//! `Sgntr` element straight from the wire text for signing/verification work.
+//! On signatures: the *base* ISO schema has a `Sgntr` envelope (constrained to
+//! the W3C XMLDSig namespace), but the FedNow profile removes it — FedNow
+//! message signatures travel outside the XML business message (see
+//! `docs/design/message-signing.md`). The model still parses `Sgntr` as a
+//! presence marker so validation can flag it, and [`sgntr_raw`] can extract its
+//! raw bytes for generic ISO 20022 tooling; re-serialization is avoided on
+//! purpose (drift breaks digests).
 
 use serde::Deserialize;
 
@@ -75,6 +75,10 @@ pub struct AppHdr {
     pub message_definition_identifier: String,
     #[serde(rename = "BizSvc")]
     pub business_service: Option<String>,
+    /// Optional in the base schema; the FedNow profile requires it with a fixed
+    /// registry and a `frb.fednow[.xxx].01` identifier (see validation).
+    #[serde(rename = "MktPrctc")]
+    pub market_practice: Option<ImplementationSpecification>,
     #[serde(rename = "CreDt")]
     pub creation_date: String,
     #[serde(rename = "CpyDplct")]
@@ -85,6 +89,15 @@ pub struct AppHdr {
     /// use [`sgntr_raw`] on the wire text to obtain the signature bytes.
     #[serde(rename = "Sgntr")]
     pub signature: Option<SignatureEnvelope>,
+}
+
+/// `<MktPrctc>` — implementation specification the message conforms to.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ImplementationSpecification {
+    #[serde(rename = "Regy")]
+    pub registry: String,
+    #[serde(rename = "Id")]
+    pub identification: String,
 }
 
 /// `<Sgntr>` — presence marker; inner XMLDSig content is skipped by the
