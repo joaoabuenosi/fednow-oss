@@ -59,6 +59,13 @@ it and restricted to `Cd` (no `Prtry`); no `AccptncDtTm` / `FctvIntrBkSttlmDt`.
 `MsgId` = plain Max35Text; `StsRsnInf` unbounded, `Rsn/Cd` or `Rsn/Prtry`;
 optional `AccptncDtTm` and `FctvIntrBkSttlmDt` (date-only choice).
 
+**Transaction statuses (from the Release 1 sample set, 50 pacs.002 samples):**
+ACTC, ACCC, ACWP, PDNG, BLCK, RJCT in both directions; **ACSC is
+service-advice-only** (never sent by participants). Proprietary reason codes
+(`Rsn/Prtry`, e.g. E000/E990) appear only in service advices, confirming the
+Cd-only participant rule. **Conformance check (July 2026):** all 50 samples
+validate clean for their direction with fednow-core.
+
 ## pacs.028.001.03 (payment status request, participant-sent)
 
 `GrpHdr`: `MsgId` = FedNow message id pattern + `CreDtTm`. **Exactly one**

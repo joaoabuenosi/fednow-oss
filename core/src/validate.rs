@@ -333,8 +333,12 @@ fn validate_status_transaction(
     }
 }
 
-/// Transaction statuses used by FedNow credit-transfer flows.
-const FEDNOW_TX_STATUSES: [&str; 4] = ["ACTC", "ACSC", "ACWP", "RJCT"];
+/// Transaction statuses used by FedNow credit-transfer flows, as observed
+/// across the Release 1 sample set: accepted (ACTC), accepted with creditor
+/// account credited (ACCC), settlement completed (ACSC, service advice only),
+/// accepted without posting (ACWP), pending (PDNG), blocked (BLCK) and
+/// rejected (RJCT).
+const FEDNOW_TX_STATUSES: [&str; 7] = ["ACTC", "ACCC", "ACSC", "ACWP", "PDNG", "BLCK", "RJCT"];
 
 /// `PmtTpInf/LclInstrm/Prtry` for customer credit transfers (uniform across
 /// every Release 1 sample message).
@@ -434,6 +438,17 @@ pub fn validate_pacs002_direction(
         }
 
         if direction == Pacs002Direction::ParticipantToService {
+            if tx.transaction_status.as_deref() == Some("ACSC") {
+                // Settlement completion is advised by the service, never
+                // reported by a participant (service-only in the sample set).
+                issues.push(ValidationIssue::new(
+                    "fednow.txsts.participant",
+                    format!("{base}/TxSts"),
+                    "participants do not send ACSC; settlement completion is a service advice"
+                        .to_string(),
+                    RuleSource::FedNowProfile,
+                ));
+            }
             if tx.status_reason_information.len() > 1 {
                 issues.push(ValidationIssue::new(
                     "fednow.stsrsninf.one",
