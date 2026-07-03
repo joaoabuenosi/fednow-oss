@@ -82,3 +82,21 @@ codes = ["fednow.sgntr.outofband"]
 file = "head001/wrong-to-party.xml"
 valid = false
 codes = ["fednow.to.service"]
+
+[[vector]]
+file = "camt056/valid.xml"
+valid = true
+
+[[vector]]
+file = "camt056/missing-cancellation-reason.xml"
+valid = false
+codes = ["fednow.cxlrsn.required"]
+
+[[vector]]
+file = "camt029/valid-rjcr.xml"
+valid = true
+
+[[vector]]
+file = "camt029/rjcr-without-reason.xml"
+valid = false
+codes = ["fednow.rjcr.reason"]

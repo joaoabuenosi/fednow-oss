@@ -22,6 +22,8 @@
       <OrgnlInstrId>INSTR-0001</OrgnlInstrId>
       <OrgnlEndToEndId>E2E-20260702-0001</OrgnlEndToEndId>
       <OrgnlUETR>8a562c67-ca16-48ba-b074-65581be6f001</OrgnlUETR>
+      <OrgnlIntrBkSttlmAmt Ccy="USD">1250.00</OrgnlIntrBkSttlmAmt>
+      <OrgnlIntrBkSttlmDt>2026-07-02</OrgnlIntrBkSttlmDt>
       <RtrdIntrBkSttlmAmt Ccy="USD">1250.00</RtrdIntrBkSttlmAmt>
       <IntrBkSttlmDt>2026-07-03</IntrBkSttlmDt>
       <ChrgBr>SLEV</ChrgBr>
@@ -45,6 +47,35 @@
           </ClrSysMmbId>
         </FinInstnId>
       </InstdAgt>
-      </TxInf>
+      <RtrChain>
+        <Dbtr>
+          <Pty>
+            <Nm>John Example Creditor</Nm>
+          </Pty>
+        </Dbtr>
+        <Cdtr>
+          <Pty>
+            <Nm>Jane Example Debtor</Nm>
+          </Pty>
+        </Cdtr>
+        <CdtrAcct>
+          <Id>
+            <Othr>
+              <Id>123456789012</Id>
+            </Othr>
+          </Id>
+        </CdtrAcct>
+      </RtrChain>
+      <OrgnlTxRef>
+        <PmtTpInf>
+          <LclInstrm>
+            <Prtry>FDNA</Prtry>
+          </LclInstrm>
+          <CtgyPurp>
+            <Prtry>CONS</Prtry>
+          </CtgyPurp>
+        </PmtTpInf>
+      </OrgnlTxRef>
+    </TxInf>
   </PmtRtr>
 </Document>
