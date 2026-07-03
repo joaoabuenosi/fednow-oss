@@ -533,6 +533,101 @@ impl Pacs028Builder {
     }
 }
 
+/// Builder for a FedNow-profile Business Application Header
+/// (head.001.001.02) — required around every business message on the MQ
+/// wire (see [`crate::envelope`]).
+///
+/// Produces the participant/service BAH shape: `Fr`/`To` as `FIId` with a
+/// bare `MmbId` (the FedNow profile strips `ClrSysId`), mandatory `MktPrctc`
+/// with the fixed registry, no `Sgntr` (signatures travel out-of-band).
+#[derive(Debug, Clone)]
+pub struct Head001Builder {
+    from_member_id: String,
+    to_member_id: String,
+    business_message_identifier: String,
+    message_definition_identifier: String,
+    creation_date: String,
+    market_practice_identification: String,
+}
+
+impl Head001Builder {
+    /// Start a header. `from`/`to` are connection party identifiers (routing
+    /// number or the service application id, `021150706`).
+    /// `message_definition_identifier` names the enclosed Document (e.g.
+    /// `pacs.008.001.08`); the market practice id defaults to `frb.fednow.01`
+    /// (override for camt.029/camt.052 contexts).
+    pub fn new(
+        from_member_id: impl Into<String>,
+        to_member_id: impl Into<String>,
+        business_message_identifier: impl Into<String>,
+        message_definition_identifier: impl Into<String>,
+        creation_date: impl Into<String>,
+    ) -> Self {
+        Self {
+            from_member_id: from_member_id.into(),
+            to_member_id: to_member_id.into(),
+            business_message_identifier: business_message_identifier.into(),
+            message_definition_identifier: message_definition_identifier.into(),
+            creation_date: creation_date.into(),
+            market_practice_identification: "frb.fednow.01".to_string(),
+        }
+    }
+
+    /// Override the market practice id (e.g. `frb.fednow.rrr.01` for a
+    /// camt.029 return-request response).
+    pub fn market_practice_identification(mut self, v: impl Into<String>) -> Self {
+        self.market_practice_identification = v.into();
+        self
+    }
+
+    /// Build the typed header.
+    pub fn build(&self) -> crate::head001::AppHdr {
+        use crate::head001::{AppHdr, ImplementationSpecification};
+
+        AppHdr {
+            xmlns: Some(crate::head001::NAMESPACE.to_string()),
+            from: bah_party(&self.from_member_id),
+            to: bah_party(&self.to_member_id),
+            business_message_identifier: self.business_message_identifier.clone(),
+            message_definition_identifier: self.message_definition_identifier.clone(),
+            business_service: None,
+            market_practice: Some(ImplementationSpecification {
+                registry: crate::validate::FEDNOW_MARKET_PRACTICE_REGISTRY.to_string(),
+                identification: self.market_practice_identification.clone(),
+            }),
+            creation_date: self.creation_date.clone(),
+            business_processing_date: None,
+            copy_duplicate: None,
+            possible_duplicate: None,
+            signature: None,
+            related: Vec::new(),
+        }
+    }
+
+    /// Build and serialize the `<AppHdr>` (no XML declaration: the header is
+    /// embedded in an envelope, never a standalone document).
+    pub fn to_xml(&self) -> Result<String, BuildError> {
+        Ok(quick_xml::se::to_string(&self.build())?)
+    }
+}
+
+/// BAH party: `FIId` with a bare `MmbId` (no `ClrSysId`, per the FedNow
+/// profile).
+fn bah_party(member_id: &str) -> crate::head001::Party44Choice {
+    crate::head001::Party44Choice {
+        organisation: None,
+        financial_institution: Some(BranchAndFinancialInstitutionIdentification {
+            financial_institution_identification: FinancialInstitutionIdentification {
+                bicfi: None,
+                clearing_system_member_identification: Some(ClearingSystemMemberIdentification {
+                    clearing_system_identification: None,
+                    member_identification: member_id.to_string(),
+                }),
+            },
+        }),
+    }
+}
+
 /// `1250.00`-style lexical form from cents; never floating point.
 fn format_cents(cents: u64) -> String {
     format!("{}.{:02}", cents / 100, cents % 100)

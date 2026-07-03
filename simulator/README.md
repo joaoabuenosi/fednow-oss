@@ -69,11 +69,42 @@ curl -s -X POST --data-binary @pacs028.xml \
 Unknown original message id → HTTP `404`. The full walkthrough lives in the
 FedNow Integration Handbook chapter on timeout reconciliation (`docs/handbook/`).
 
+## MQ mode — the real connection's semantics
+
+The production FedNow connection is an IBM MQ queue pair, and it is
+**asynchronous**: a send returns nothing; advices arrive later on your receive
+queue, wrapped in the FedNow technical envelope with a Business Application
+Header. MQ mode mirrors exactly that:
+
+```sh
+# PUT: fire-and-forget send of a FedNowIncoming envelope → 202, empty body
+curl -s -X POST --data-binary @envelope.xml \
+  -H "content-type: application/xml" \
+  http://localhost:8080/mq/participants/021040078/send
+
+# GET: next FedNowOutgoing envelope from your receive queue (204 when empty)
+curl -s http://localhost:8080/mq/participants/021040078/receive
+```
+
+Differences from the HTTP dev mode, all deliberate:
+
+- **Every** outcome is asynchronous — even profile-validation rejections
+  (`RJCT`/`SIMV`) arrive as queued advices, not HTTP errors.
+- The post-ACWP follow-up status (`.66` trigger) is **pushed** to the queue
+  ~500 ms later; no pacs.028 needed (the HTTP mode cannot push).
+- A timeout (`.33`) leaves the queue empty — poll all you want, nothing comes
+  until a pacs.028 (sent through the same `/send`) replays the withheld advice.
+
+Scenario triggers, config file and the advice ledger are shared between modes.
+
 ## Endpoints
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/fednow/messages` | pacs.008 → pacs.002 advice; pacs.028 → stored advice replay |
+| POST | `/fednow/messages` | HTTP dev mode: pacs.008 → pacs.002 advice; pacs.028 → stored advice replay |
+| POST | `/mq/participants/{rtn}/send` | MQ mode: fire-and-forget `FedNowIncoming` (pacs.008, pacs.028) |
+| GET | `/mq/participants/{rtn}/receive` | MQ mode: destructive get of the next `FedNowOutgoing` |
 | GET | `/healthz` | liveness |
 
-State is in-memory and per-process (v0): restart forgets past payments.
+State is in-memory and per-process (v0): restart forgets past payments and
+queued advices.

@@ -12,7 +12,7 @@
 //! raw bytes for generic ISO 20022 tooling; re-serialization is avoided on
 //! purpose (drift breaks digests).
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::ParseError;
 use crate::pacs008::BranchAndFinancialInstitutionIdentification;
@@ -60,10 +60,10 @@ pub fn sgntr_raw(xml: &str) -> Option<&str> {
 }
 
 /// `<AppHdr>` — root element (BusinessApplicationHeaderV02).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppHdr {
     /// Captured so validation can check the header version (`@xmlns`).
-    #[serde(rename = "@xmlns")]
+    #[serde(rename = "@xmlns", skip_serializing_if = "Option::is_none")]
     pub xmlns: Option<String>,
     #[serde(rename = "Fr")]
     pub from: Party44Choice,
@@ -73,28 +73,30 @@ pub struct AppHdr {
     pub business_message_identifier: String,
     #[serde(rename = "MsgDefIdr")]
     pub message_definition_identifier: String,
-    #[serde(rename = "BizSvc")]
+    #[serde(rename = "BizSvc", skip_serializing_if = "Option::is_none")]
     pub business_service: Option<String>,
     /// Optional in the base schema; the FedNow profile requires it with a fixed
     /// registry and a `frb.fednow[.xxx].01` identifier (see validation).
-    #[serde(rename = "MktPrctc")]
+    #[serde(rename = "MktPrctc", skip_serializing_if = "Option::is_none")]
     pub market_practice: Option<ImplementationSpecification>,
     #[serde(rename = "CreDt")]
     pub creation_date: String,
     /// Service-delivered messages only; participants must not send it.
-    #[serde(rename = "BizPrcgDt")]
+    #[serde(rename = "BizPrcgDt", skip_serializing_if = "Option::is_none")]
     pub business_processing_date: Option<String>,
-    #[serde(rename = "CpyDplct")]
+    #[serde(rename = "CpyDplct", skip_serializing_if = "Option::is_none")]
     pub copy_duplicate: Option<String>,
-    #[serde(rename = "PssblDplct")]
+    #[serde(rename = "PssblDplct", skip_serializing_if = "Option::is_none")]
     pub possible_duplicate: Option<String>,
     /// Presence of the signature envelope. Content is intentionally not modeled —
     /// use [`sgntr_raw`] on the wire text to obtain the signature bytes.
-    #[serde(rename = "Sgntr")]
+    /// Never serialized: the FedNow profile removes `Sgntr`, and this crate
+    /// must not emit an empty envelope where a signature belongs.
+    #[serde(rename = "Sgntr", skip_serializing)]
     pub signature: Option<SignatureEnvelope>,
     /// Related header(s); only present in messages the FedNow Service delivers
     /// in response to retrieval/status requests. Content not modeled.
-    #[serde(rename = "Rltd", default)]
+    #[serde(rename = "Rltd", default, skip_serializing)]
     pub related: Vec<RelatedHeader>,
 }
 
@@ -103,7 +105,7 @@ pub struct AppHdr {
 pub struct RelatedHeader {}
 
 /// `<MktPrctc>` — implementation specification the message conforms to.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImplementationSpecification {
     #[serde(rename = "Regy")]
     pub registry: String,
@@ -120,20 +122,20 @@ pub struct SignatureEnvelope {}
 ///
 /// Modeled as two options because serde has no native XSD-choice; the validator
 /// enforces the exactly-one rule.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Party44Choice {
-    #[serde(rename = "OrgId")]
+    #[serde(rename = "OrgId", skip_serializing_if = "Option::is_none")]
     pub organisation: Option<PartyIdentification135>,
     /// FedNow participants identify themselves here, with the routing number in
     /// `FinInstnId/ClrSysMmbId/MmbId`. Shares the shape used by pacs.008 agents
     /// (the underlying ISO type is the same).
-    #[serde(rename = "FIId")]
+    #[serde(rename = "FIId", skip_serializing_if = "Option::is_none")]
     pub financial_institution: Option<BranchAndFinancialInstitutionIdentification>,
 }
 
 /// `<OrgId>` under Party44Choice (subset).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PartyIdentification135 {
-    #[serde(rename = "Nm")]
+    #[serde(rename = "Nm", skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
 }
