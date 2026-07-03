@@ -42,15 +42,18 @@ Contexto do autor: Joca — engenheiro de pagamentos BR, experiência Pix em pro
 - Commits e código em inglês; discussão com Joca pode ser em PT-BR.
 
 ## Milestone atual
-**v0.1.0 LANÇADA (jul/2026)** — loop completo de envio ponta a ponta:
-core (5 mensagens nos perfis Release 1 reais, calibradas contra 81 samples
-oficiais + builders), fednow-sim (6 cenários CTP + reconciliação pacs.028),
-fednow-gateway (REST idempotente, event sourcing em SQLite, outbox real,
-reconciliador de fundo), fednow-conformance (corpus de vetores + runner de
-cenários), handbook (caps. timeout e zero-ao-CTP), release com SBOM.
-**M4 (próximo): modo MQ (sim + adapter do gateway) e camt.056/029.**
-Pendências externas: assinatura (issue #14 — Technical Specifications);
-exports das guidelines de returns p/ calibrar pacs.004.
+**v0.1.0 LANÇADA (jul/2026)**; **M4 CONCLUÍDO (jul/2026)** — semântica MQ
+ponta a ponta: core com envelope técnico (FedNowIncoming/Outgoing, split
+byte-exato p/ assinatura futura, validate_envelope, Head001Builder),
+camt.056/029 + pacs.004 calibrados, fednow-sim com modo MQ (send
+fire-and-forget + fila de advices por participante), fednow-gateway com
+adapter MQ (FEDNOW_GW_SOUTHBOUND=mq, pump de advices correlacionando por
+OrgnlMsgId). 7 mensagens, ~190 testes, 34 PRs.
+**M5 (próximo): endurecimento p/ adoção — cargo audit/Dependabot no CI,
+vetores de envelope no conformance, publicação no crates.io, handbook cap. 1,
+v0.2.0.**
+Pendência externa: assinatura (issue #14 — formato só no onboarding do Fed;
+rota realista: design partner via CTP ou FedNow Community).
 
 Repo: https://github.com/joaoabuenosi/fednow-oss (conta pessoal; org fica p/
 quando houver mantenedores externos). Main protegida: PR + CI verde obrigatórios.
