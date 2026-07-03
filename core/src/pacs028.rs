@@ -12,7 +12,7 @@
 //! current or prior calendar day, and requests should not be sent before the
 //! presumed timeout of the original instruction.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::ParseError;
 use crate::pacs002::OriginalGroupInformation;
@@ -27,26 +27,26 @@ pub fn parse(xml: &str) -> Result<Document, ParseError> {
 }
 
 /// `<Document>` — root element.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Document {
     /// Captured so validation can check the message version (`@xmlns`).
-    #[serde(rename = "@xmlns")]
+    #[serde(rename = "@xmlns", skip_serializing_if = "Option::is_none")]
     pub xmlns: Option<String>,
     #[serde(rename = "FIToFIPmtStsReq")]
     pub fi_to_fi_payment_status_request: FIToFIPaymentStatusRequestV03,
 }
 
 /// `<FIToFIPmtStsReq>` — the status request body.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FIToFIPaymentStatusRequestV03 {
     #[serde(rename = "GrpHdr")]
     pub group_header: GroupHeader,
-    #[serde(rename = "TxInf", default)]
+    #[serde(rename = "TxInf", default, skip_serializing_if = "Vec::is_empty")]
     pub transaction_information: Vec<PaymentTransaction>,
 }
 
 /// `<GrpHdr>`
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GroupHeader {
     #[serde(rename = "MsgId")]
     pub message_identification: String,
@@ -55,23 +55,23 @@ pub struct GroupHeader {
 }
 
 /// `<TxInf>` — identifies one original transaction being queried.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaymentTransaction {
     /// Optional in the base schema; the FedNow profile requires it.
-    #[serde(rename = "OrgnlGrpInf")]
+    #[serde(rename = "OrgnlGrpInf", skip_serializing_if = "Option::is_none")]
     pub original_group_information: Option<OriginalGroupInformation>,
-    #[serde(rename = "OrgnlInstrId")]
+    #[serde(rename = "OrgnlInstrId", skip_serializing_if = "Option::is_none")]
     pub original_instruction_identification: Option<String>,
-    #[serde(rename = "OrgnlEndToEndId")]
+    #[serde(rename = "OrgnlEndToEndId", skip_serializing_if = "Option::is_none")]
     pub original_end_to_end_identification: Option<String>,
-    #[serde(rename = "OrgnlTxId")]
+    #[serde(rename = "OrgnlTxId", skip_serializing_if = "Option::is_none")]
     pub original_transaction_identification: Option<String>,
-    #[serde(rename = "OrgnlUETR")]
+    #[serde(rename = "OrgnlUETR", skip_serializing_if = "Option::is_none")]
     pub original_uetr: Option<String>,
     /// Optional in the base schema; the FedNow profile requires it.
-    #[serde(rename = "InstgAgt")]
+    #[serde(rename = "InstgAgt", skip_serializing_if = "Option::is_none")]
     pub instructing_agent: Option<BranchAndFinancialInstitutionIdentification>,
     /// Optional in the base schema; the FedNow profile requires it.
-    #[serde(rename = "InstdAgt")]
+    #[serde(rename = "InstdAgt", skip_serializing_if = "Option::is_none")]
     pub instructed_agent: Option<BranchAndFinancialInstitutionIdentification>,
 }
