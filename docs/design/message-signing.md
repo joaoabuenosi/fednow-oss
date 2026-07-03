@@ -1,6 +1,7 @@
 # Design: FedNow message signing in fednow-core
 
-*Status: research done, profile confirmation pending · July 2026*
+*Status: operational model confirmed; wire format pending (Technical
+Specifications) · July 2026*
 
 Every message exchanged with the FedNow Service must be cryptographically signed,
 and the service validates both the signature and the binding between the sending
@@ -25,9 +26,47 @@ progress without betting on unconfirmed details.
 5. mTLS on the transport and the message signature are **independent layers**;
    one does not replace the other.
 
-## Not yet confirmed: the exact signature profile
+## Operational model (FedNow Service Operating Procedures, §8 "Message Signing")
 
-The normative profile (algorithms, what exactly is digested, envelope shape) lives
+Confirmed from the public Operating Procedures (June 2024 edition,
+frbservices.org):
+
+- **Everything is signed except the Participant Broadcast Ping (admi.004)** —
+  and the service does not validate the signature of a ping. Same requirements
+  in the test and production environments (with distinct key pairs per
+  environment).
+- **Key lifecycle:** the *first* key pair (or a recovery when all keys expired)
+  is established via the FedNow interface with phone validation by the Support
+  Center; subsequent pairs are added **via MQ** (the `FedNowKeyExchange`
+  message set), which requires an explicit expiration date, capped at **364
+  days**. Revocation via interface or MQ (`Revoke/Compromise` action).
+  Owners may hold many active keys; multiple active keys with staggered
+  expirations is the recommended practice. Service providers may share one key
+  across FIs or use per-FI (target RTN) keys.
+- **Key identity:** a key has *key*, *key name* and *key id* — and for FedNow
+  Service keys, **key name equals key id**. Receivers must check that the key
+  id of an inbound message matches an active key in their list *before*
+  validating the signature, and validate before processing.
+- **Service key distribution:** initial list via the FedNow interface; updates
+  via interface or MQ; a `FNKY` FedNow Broadcast (admi.004) announces each new
+  service key. The service signs with its **oldest active key** and rolls to
+  the next as expiration nears.
+- **Failure handling:** unsigned / expired-key / unknown-key messages are
+  rejected with admi.002 and an error code; correlation with the rejected
+  message uses the **MQ correlation id in the technical message header**
+  (Implementation Guide) — further evidence the signature travels in the MQ
+  layer, outside the ISO payload. Participants receiving bad signatures from
+  the service must reject and call the Support Center (the service initially
+  does not process inbound admi.002).
+
+Gateway design implications (for later): the key store must track (key id,
+public key, expiration, environment) for both own keys and service keys; key
+rotation is an MQ flow the gateway must speak; the verifier needs a "key id →
+active key" lookup that fails closed.
+
+## Not yet confirmed: the exact signature wire format
+
+The normative format (algorithms, what exactly is digested, envelope shape) lives
 in the **FedNow Service Technical Specifications** on SWIFT MyStandards — free
 account, but registration-gated, and its content must not be pasted into this repo
 without checking its redistribution terms.
