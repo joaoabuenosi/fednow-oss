@@ -11,7 +11,7 @@
 //! [`crate::validate::validate_pacs002`] instead, so structurally complete but
 //! profile-deficient messages can still be inspected.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::ParseError;
 
@@ -24,28 +24,28 @@ pub fn parse(xml: &str) -> Result<Document, ParseError> {
 }
 
 /// `<Document>` — root element.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Document {
     /// Captured so validation can check the message version (`@xmlns`).
-    #[serde(rename = "@xmlns")]
+    #[serde(rename = "@xmlns", skip_serializing_if = "Option::is_none")]
     pub xmlns: Option<String>,
     #[serde(rename = "FIToFIPmtStsRpt")]
     pub fi_to_fi_payment_status_report: FIToFIPaymentStatusReportV10,
 }
 
 /// `<FIToFIPmtStsRpt>` — the status report body.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FIToFIPaymentStatusReportV10 {
     #[serde(rename = "GrpHdr")]
     pub group_header: GroupHeader,
-    #[serde(rename = "OrgnlGrpInfAndSts")]
+    #[serde(rename = "OrgnlGrpInfAndSts", skip_serializing_if = "Option::is_none")]
     pub original_group_information_and_status: Option<OriginalGroupHeader>,
-    #[serde(rename = "TxInfAndSts", default)]
+    #[serde(rename = "TxInfAndSts", default, skip_serializing_if = "Vec::is_empty")]
     pub transaction_information_and_status: Vec<PaymentTransaction>,
 }
 
 /// `<GrpHdr>`
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GroupHeader {
     #[serde(rename = "MsgId")]
     pub message_identification: String,
@@ -54,84 +54,84 @@ pub struct GroupHeader {
 }
 
 /// `<OrgnlGrpInfAndSts>` — identifies the original message being reported on.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OriginalGroupHeader {
     #[serde(rename = "OrgnlMsgId")]
     pub original_message_identification: String,
     #[serde(rename = "OrgnlMsgNmId")]
     pub original_message_name_identification: String,
-    #[serde(rename = "GrpSts")]
+    #[serde(rename = "GrpSts", skip_serializing_if = "Option::is_none")]
     pub group_status: Option<String>,
 }
 
 /// `<TxInfAndSts>` — status of one original transaction.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaymentTransaction {
     /// Optional in the base schema; the FedNow profiles require it.
-    #[serde(rename = "OrgnlGrpInf")]
+    #[serde(rename = "OrgnlGrpInf", skip_serializing_if = "Option::is_none")]
     pub original_group_information: Option<OriginalGroupInformation>,
-    #[serde(rename = "OrgnlInstrId")]
+    #[serde(rename = "OrgnlInstrId", skip_serializing_if = "Option::is_none")]
     pub original_instruction_identification: Option<String>,
-    #[serde(rename = "OrgnlEndToEndId")]
+    #[serde(rename = "OrgnlEndToEndId", skip_serializing_if = "Option::is_none")]
     pub original_end_to_end_identification: Option<String>,
-    #[serde(rename = "OrgnlTxId")]
+    #[serde(rename = "OrgnlTxId", skip_serializing_if = "Option::is_none")]
     pub original_transaction_identification: Option<String>,
-    #[serde(rename = "OrgnlUETR")]
+    #[serde(rename = "OrgnlUETR", skip_serializing_if = "Option::is_none")]
     pub original_uetr: Option<String>,
     /// Optional in the schema; the FedNow profile requires it (see validation).
-    #[serde(rename = "TxSts")]
+    #[serde(rename = "TxSts", skip_serializing_if = "Option::is_none")]
     pub transaction_status: Option<String>,
-    #[serde(rename = "StsRsnInf", default)]
+    #[serde(rename = "StsRsnInf", default, skip_serializing_if = "Vec::is_empty")]
     pub status_reason_information: Vec<StatusReasonInformation>,
-    #[serde(rename = "AccptncDtTm")]
+    #[serde(rename = "AccptncDtTm", skip_serializing_if = "Option::is_none")]
     pub acceptance_date_time: Option<String>,
     /// Date (`Dt`) choice; used by the FedNow service advice when settled.
-    #[serde(rename = "FctvIntrBkSttlmDt")]
+    #[serde(rename = "FctvIntrBkSttlmDt", skip_serializing_if = "Option::is_none")]
     pub effective_interbank_settlement_date: Option<DateChoice>,
-    #[serde(rename = "ClrSysRef")]
+    #[serde(rename = "ClrSysRef", skip_serializing_if = "Option::is_none")]
     pub clearing_system_reference: Option<String>,
     /// Optional in the base schema; the FedNow profiles require it.
-    #[serde(rename = "InstgAgt")]
+    #[serde(rename = "InstgAgt", skip_serializing_if = "Option::is_none")]
     pub instructing_agent: Option<crate::pacs008::BranchAndFinancialInstitutionIdentification>,
     /// Optional in the base schema; the FedNow profiles require it.
-    #[serde(rename = "InstdAgt")]
+    #[serde(rename = "InstdAgt", skip_serializing_if = "Option::is_none")]
     pub instructed_agent: Option<crate::pacs008::BranchAndFinancialInstitutionIdentification>,
 }
 
 /// `<OrgnlGrpInf>` — identifies the original message inside a transaction entry.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OriginalGroupInformation {
     #[serde(rename = "OrgnlMsgId")]
     pub original_message_identification: String,
     #[serde(rename = "OrgnlMsgNmId")]
     pub original_message_name_identification: String,
     /// Optional in the base schema; the FedNow profiles require it.
-    #[serde(rename = "OrgnlCreDtTm")]
+    #[serde(rename = "OrgnlCreDtTm", skip_serializing_if = "Option::is_none")]
     pub original_creation_date_time: Option<String>,
 }
 
 /// `<Dt>`-only date choice.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DateChoice {
-    #[serde(rename = "Dt")]
+    #[serde(rename = "Dt", skip_serializing_if = "Option::is_none")]
     pub date: Option<String>,
 }
 
 /// `<StsRsnInf>` — why a transaction has its status (mandatory context on rejects).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StatusReasonInformation {
-    #[serde(rename = "Rsn")]
+    #[serde(rename = "Rsn", skip_serializing_if = "Option::is_none")]
     pub reason: Option<StatusReason>,
-    #[serde(rename = "AddtlInf", default)]
+    #[serde(rename = "AddtlInf", default, skip_serializing_if = "Vec::is_empty")]
     pub additional_information: Vec<String>,
 }
 
 /// `<Rsn>` — external code or proprietary reason.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StatusReason {
-    #[serde(rename = "Cd")]
+    #[serde(rename = "Cd", skip_serializing_if = "Option::is_none")]
     pub code: Option<String>,
-    #[serde(rename = "Prtry")]
+    #[serde(rename = "Prtry", skip_serializing_if = "Option::is_none")]
     pub proprietary: Option<String>,
 }
 

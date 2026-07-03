@@ -241,6 +241,189 @@ impl Pacs008Builder {
     }
 }
 
+/// Builder for a pacs.002 payment status report (both FedNow directions).
+///
+/// Constructs the service advice (`ACSC`/`RJCT`/`ACWP`/...) that `fednow-sim`
+/// answers with, and equally the participant accept/reject response. Which
+/// direction the result satisfies is decided by what you put in it — run
+/// [`crate::validate::validate_pacs002_direction`] with the intended direction
+/// (the builder does not guess).
+#[derive(Debug, Clone)]
+pub struct Pacs002Builder {
+    message_identification: String,
+    creation_date_time: String,
+    original_message_identification: String,
+    original_message_name_identification: String,
+    original_creation_date_time: String,
+    transaction_status: String,
+    instructing_agent_routing_number: String,
+    instructed_agent_routing_number: String,
+    original_instruction_identification: Option<String>,
+    original_end_to_end_identification: Option<String>,
+    original_uetr: Option<String>,
+    reason_code: Option<String>,
+    reason_proprietary: Option<String>,
+    additional_information: Option<String>,
+    acceptance_date_time: Option<String>,
+    effective_interbank_settlement_date: Option<String>,
+}
+
+impl Pacs002Builder {
+    /// Start a status report answering the original message identified by
+    /// `original_message_identification` / `original_creation_date_time`
+    /// (a pacs.008 unless overridden with
+    /// [`Pacs002Builder::original_message_name_identification`]).
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        message_identification: impl Into<String>,
+        creation_date_time: impl Into<String>,
+        original_message_identification: impl Into<String>,
+        original_creation_date_time: impl Into<String>,
+        transaction_status: impl Into<String>,
+        instructing_agent_routing_number: impl Into<String>,
+        instructed_agent_routing_number: impl Into<String>,
+    ) -> Self {
+        Self {
+            message_identification: message_identification.into(),
+            creation_date_time: creation_date_time.into(),
+            original_message_identification: original_message_identification.into(),
+            original_message_name_identification: "pacs.008.001.08".to_string(),
+            original_creation_date_time: original_creation_date_time.into(),
+            transaction_status: transaction_status.into(),
+            instructing_agent_routing_number: instructing_agent_routing_number.into(),
+            instructed_agent_routing_number: instructed_agent_routing_number.into(),
+            original_instruction_identification: None,
+            original_end_to_end_identification: None,
+            original_uetr: None,
+            reason_code: None,
+            reason_proprietary: None,
+            additional_information: None,
+            acceptance_date_time: None,
+            effective_interbank_settlement_date: None,
+        }
+    }
+
+    /// Override the original message name (defaults to `pacs.008.001.08`).
+    pub fn original_message_name_identification(mut self, v: impl Into<String>) -> Self {
+        self.original_message_name_identification = v.into();
+        self
+    }
+
+    pub fn original_instruction_identification(mut self, v: impl Into<String>) -> Self {
+        self.original_instruction_identification = Some(v.into());
+        self
+    }
+
+    pub fn original_end_to_end_identification(mut self, v: impl Into<String>) -> Self {
+        self.original_end_to_end_identification = Some(v.into());
+        self
+    }
+
+    pub fn original_uetr(mut self, v: impl Into<String>) -> Self {
+        self.original_uetr = Some(v.into());
+        self
+    }
+
+    /// External status reason code (e.g. `AC04`). Mandatory context on rejects.
+    pub fn reason_code(mut self, v: impl Into<String>) -> Self {
+        self.reason_code = Some(v.into());
+        self
+    }
+
+    /// Proprietary status reason (service advices only, e.g. `E000`).
+    pub fn reason_proprietary(mut self, v: impl Into<String>) -> Self {
+        self.reason_proprietary = Some(v.into());
+        self
+    }
+
+    pub fn additional_information(mut self, v: impl Into<String>) -> Self {
+        self.additional_information = Some(v.into());
+        self
+    }
+
+    /// Acceptance timestamp (service advices only).
+    pub fn acceptance_date_time(mut self, v: impl Into<String>) -> Self {
+        self.acceptance_date_time = Some(v.into());
+        self
+    }
+
+    /// Effective settlement date, `YYYY-MM-DD` (service advices only).
+    pub fn effective_interbank_settlement_date(mut self, v: impl Into<String>) -> Self {
+        self.effective_interbank_settlement_date = Some(v.into());
+        self
+    }
+
+    /// Build the typed document.
+    pub fn build(&self) -> crate::pacs002::Document {
+        use crate::pacs002::{
+            DateChoice, Document as P2Document, FIToFIPaymentStatusReportV10, GroupHeader,
+            OriginalGroupInformation, PaymentTransaction, StatusReason, StatusReasonInformation,
+        };
+
+        let status_reason_information = if self.reason_code.is_some()
+            || self.reason_proprietary.is_some()
+        {
+            vec![StatusReasonInformation {
+                reason: Some(StatusReason {
+                    code: self.reason_code.clone(),
+                    proprietary: self.reason_proprietary.clone(),
+                }),
+                additional_information: self.additional_information.clone().into_iter().collect(),
+            }]
+        } else {
+            Vec::new()
+        };
+
+        P2Document {
+            xmlns: Some(crate::pacs002::NAMESPACE.to_string()),
+            fi_to_fi_payment_status_report: FIToFIPaymentStatusReportV10 {
+                group_header: GroupHeader {
+                    message_identification: self.message_identification.clone(),
+                    creation_date_time: self.creation_date_time.clone(),
+                },
+                original_group_information_and_status: None,
+                transaction_information_and_status: vec![PaymentTransaction {
+                    original_group_information: Some(OriginalGroupInformation {
+                        original_message_identification: self
+                            .original_message_identification
+                            .clone(),
+                        original_message_name_identification: self
+                            .original_message_name_identification
+                            .clone(),
+                        original_creation_date_time: Some(self.original_creation_date_time.clone()),
+                    }),
+                    original_instruction_identification: self
+                        .original_instruction_identification
+                        .clone(),
+                    original_end_to_end_identification: self
+                        .original_end_to_end_identification
+                        .clone(),
+                    original_transaction_identification: None,
+                    original_uetr: self.original_uetr.clone(),
+                    transaction_status: Some(self.transaction_status.clone()),
+                    status_reason_information,
+                    acceptance_date_time: self.acceptance_date_time.clone(),
+                    effective_interbank_settlement_date: self
+                        .effective_interbank_settlement_date
+                        .as_ref()
+                        .map(|d| DateChoice {
+                            date: Some(d.clone()),
+                        }),
+                    clearing_system_reference: None,
+                    instructing_agent: Some(agent(&self.instructing_agent_routing_number)),
+                    instructed_agent: Some(agent(&self.instructed_agent_routing_number)),
+                }],
+            },
+        }
+    }
+
+    /// Build and serialize to the XML wire form (with XML declaration).
+    pub fn to_xml(&self) -> Result<String, BuildError> {
+        let body = quick_xml::se::to_string(&self.build())?;
+        Ok(format!(r#"<?xml version="1.0" encoding="UTF-8"?>{body}"#))
+    }
+}
+
 /// `1250.00`-style lexical form from cents; never floating point.
 fn format_cents(cents: u64) -> String {
     format!("{}.{:02}", cents / 100, cents % 100)
