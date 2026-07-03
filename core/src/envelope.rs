@@ -198,10 +198,8 @@ pub fn split(xml: &str) -> Result<RawEnvelope<'_>, ParseError> {
                                 Some(&xml[pos_before + offset..pos_before + offset + name.len()]);
                         }
                     }
-                    4 => {
-                        if local == b"AppHdr" || local == b"Document" {
-                            element_start = Some(pos_before);
-                        }
+                    4 if local == b"AppHdr" || local == b"Document" => {
+                        element_start = Some(pos_before);
                     }
                     _ => {}
                 }
