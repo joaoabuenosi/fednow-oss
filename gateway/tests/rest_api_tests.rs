@@ -143,3 +143,39 @@ async fn timeout_then_reconcile_endpoint_resolves_to_settled() {
     assert_eq!(view["state"], "SETTLED", "the pacs.028 revealed settlement");
     assert_eq!(view["queries_sent"], 1);
 }
+
+#[tokio::test]
+async fn ops_summary_reports_states_and_outbox() {
+    let sim = start_sim();
+    let app = app(&sim, 0); // timeout 0: reconcile declares immediately
+
+    // One settled, one parked in the timeout arc.
+    let (status, _) = call(&app, post_payment("o1", body_json("REST0005", 125_000))).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = call(&app, post_payment("o2", body_json("REST0006", 125_033))).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, view) = call(
+        &app,
+        Request::post("/payments/o2/reconcile")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(view["state"], "TIMEOUT_UNRESOLVED");
+
+    let (status, view) = call(
+        &app,
+        Request::get("/ops/summary").body(Body::empty()).unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{view}");
+    assert_eq!(view["payments_total"], 2);
+    assert_eq!(view["by_state"]["SETTLED"], 1);
+    assert_eq!(view["by_state"]["TIMEOUT_UNRESOLVED"], 1);
+    assert_eq!(view["outbox_pending"], 0);
+    assert!(
+        view["oldest_unresolved_age_secs"].is_i64(),
+        "unresolved age must be reported: {view}"
+    );
+}

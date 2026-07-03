@@ -21,7 +21,7 @@ use axum::{Json, Router};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
-use crate::payment::{Payment, PaymentState};
+use crate::payment::Payment;
 use crate::service::{PaymentService, ServiceError, SubmitRequest};
 use crate::southbound::FedNowPort;
 use crate::store::PaymentStore;
@@ -49,7 +49,39 @@ where
         .route("/payments", post(submit_payment::<S, P>))
         .route("/payments/{key}", get(get_payment::<S, P>))
         .route("/payments/{key}/reconcile", post(reconcile_payment::<S, P>))
+        .route("/ops/summary", get(ops_summary::<S, P>))
         .with_state(state)
+}
+
+/// Operational snapshot for probes and 24x7 operators.
+#[derive(Debug, Serialize)]
+struct OpsSummaryView {
+    payments_total: usize,
+    by_state: std::collections::BTreeMap<&'static str, usize>,
+    outbox_pending: usize,
+    oldest_unresolved_age_secs: Option<i64>,
+}
+
+async fn ops_summary<S, P>(State(state): State<Arc<AppState<S, P>>>) -> Response
+where
+    S: PaymentStore + Send + Sync + 'static,
+    P: FedNowPort + Send + Sync + 'static,
+{
+    let now_unix = Utc::now().timestamp();
+    let result = tokio::task::spawn_blocking(move || state.service.summary(now_unix)).await;
+    match result {
+        Ok(s) => (
+            StatusCode::OK,
+            Json(OpsSummaryView {
+                payments_total: s.payments_total,
+                by_state: s.by_state,
+                outbox_pending: s.outbox_pending,
+                oldest_unresolved_age_secs: s.oldest_unresolved_age_secs,
+            }),
+        )
+            .into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
 }
 
 /// Submission body. The idempotency key travels in the `Idempotency-Key`
@@ -87,7 +119,7 @@ impl PaymentView {
     fn from(p: &Payment) -> Self {
         Self {
             idempotency_key: p.idempotency_key.clone(),
-            state: state_name(p.state).to_string(),
+            state: p.state.name().to_string(),
             message_identification: p.message_identification.clone(),
             end_to_end_identification: p.end_to_end_identification.clone(),
             uetr: p.uetr.clone(),
@@ -95,18 +127,6 @@ impl PaymentView {
             rejection_reason: p.rejection_reason.clone(),
             events: p.events.len(),
         }
-    }
-}
-
-fn state_name(state: PaymentState) -> &'static str {
-    match state {
-        PaymentState::Created => "CREATED",
-        PaymentState::Validated => "VALIDATED",
-        PaymentState::Submitted => "SUBMITTED",
-        PaymentState::AckPending => "ACK_PENDING",
-        PaymentState::Settled => "SETTLED",
-        PaymentState::Rejected => "REJECTED",
-        PaymentState::TimeoutUnresolved => "TIMEOUT_UNRESOLVED",
     }
 }
 

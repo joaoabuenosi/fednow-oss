@@ -56,6 +56,9 @@ pub trait PaymentStore {
     fn next_unpublished(&self) -> Option<OutboxEntry>;
     /// Mark an outbox entry as published (confirmed handoff).
     fn mark_published(&self, outbox_id: i64);
+    /// How many outbox entries still await publication (ops visibility:
+    /// a growing number means the transport is down or refusing).
+    fn unpublished_count(&self) -> usize;
 }
 
 /// In-memory store: a mutexed map of event streams plus an outbox queue.
@@ -172,5 +175,14 @@ impl PaymentStore for InMemoryStore {
         if let Some(entry) = inner.outbox.iter_mut().find(|(id, ..)| *id == outbox_id) {
             entry.3 = true;
         }
+    }
+
+    fn unpublished_count(&self) -> usize {
+        let inner = self.inner.lock().unwrap();
+        inner
+            .outbox
+            .iter()
+            .filter(|(_, _, _, published)| !published)
+            .count()
     }
 }

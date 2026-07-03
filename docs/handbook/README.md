@@ -16,3 +16,4 @@ guidelines, or demonstrated by an executable example.
 | 2 | [Timeout reconciliation](02-timeout-reconciliation.md) — the hard case | draft |
 | 3 | Message signing and key management | blocked on [#14](https://github.com/joaoabuenosi/fednow-oss/issues/14) |
 | 4 | [From zero to the Customer Testing Program](04-zero-to-ctp.md) | draft (credit transfers) |
+| 5 | [Returns](05-returns.md) — camt.056 / camt.029 / pacs.004 | draft |
