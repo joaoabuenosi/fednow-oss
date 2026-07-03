@@ -22,6 +22,7 @@ community banks, credit unions and service providers in the US.
 | `fednow-gateway` | [`gateway/`](gateway/) | ✅ full send loop | Send middleware: event-sourced state machine on SQLite, idempotency-keyed REST API, real outbox, background pacs.028 reconciler, and an MQ-style southbound adapter (`FEDNOW_GW_SOUTHBOUND=mq`) |
 | `fednow-conformance` | [`conformance/`](conformance/) | ✅ 24 vectors | Conformance suite any implementation can run: language-agnostic vector corpus (bare Documents + envelopes), message validator CLI, and a live CTP scenario runner |
 | `fednow-gateway-client` | [`sdk/python/`](sdk/python/) | ✅ v0 (Python) | Zero-dependency Python client for the gateway REST API — idempotent submits, `wait_final` that understands the timeout case, profile violations as exceptions with rule codes; integration-tested against the live stack in CI |
+| `fednow-gateway-client` | [`sdk/java/`](sdk/java/) | ✅ v0 (Java 17) | Same client contract for the JVM (banks' home turf): builder-checked requests, `waitFinal`, typed exceptions; one dependency (Jackson); integration-tested against the live stack in CI |
 
 ## Current milestone
 
@@ -45,11 +46,17 @@ a payment that settles, one that is rejected with its ISO reason code, the
 timeout case resolving itself via pacs.028 (never a resend), and a
 profile-invalid message stopped before the wire with stable rule codes.
 
-## Supported message types (target set)
+## Message types
 
-pacs.008 (credit transfer) · pacs.002 (status) · pacs.028 (status request) ·
-pain.013/pain.014 (request for payment) · camt.056/camt.029 (return request/response) ·
-admi (ping/broadcast)
+**Implemented, calibrated against the real Release 1 profiles**: pacs.008
+(credit transfer) · pacs.002 (status, both directions) · pacs.028 (status
+request) · pacs.004 (payment return) · camt.056/camt.029 (return
+request/response) · head.001 (BAH) · the `FedNowIncoming`/`FedNowOutgoing`
+MQ technical envelope.
+
+**Planned**: pain.013/pain.014 (request for payment) · admi
+(ping/broadcast) · message signing
+([#14](https://github.com/joaoabuenosi/fednow-oss/issues/14)).
 
 ## Design principles
 

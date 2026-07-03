@@ -167,6 +167,43 @@ implementation can run against.
 Per-routing-number scenarios via a TOML file: see the
 [simulator README](simulator/README.md).
 
+## Use it from your language
+
+The same flow, without hand-writing HTTP — both SDKs are integration-tested
+against this exact stack in CI:
+
+**Python** ([`sdk/python/`](sdk/python/), zero dependencies):
+
+```python
+from fednow_client import GatewayClient
+
+gw = GatewayClient("http://localhost:8090")
+gw.submit("order-1", reference="ORDER0001", amount_cents=125_000,
+          debtor_name="Jane", debtor_account="123456789012",
+          creditor_name="John", creditor_account="987654321000",
+          creditor_agent_routing_number="091000019")
+print(gw.wait_final("order-1").state)   # SETTLED
+```
+
+**Java 17** ([`sdk/java/`](sdk/java/)):
+
+```java
+var gw = new GatewayClient("http://localhost:8090");
+gw.submit("order-1", SubmitPaymentRequest.builder()
+    .reference("ORDER0001").amountCents(125_000)
+    .debtorName("Jane").debtorAccount("123456789012")
+    .creditorName("John").creditorAccount("987654321000")
+    .creditorAgentRoutingNumber("091000019").build());
+System.out.println(gw.waitFinal("order-1").state());   // SETTLED
+```
+
+## Operate it
+
+`GET /ops/summary` is the operator's glance — counts by state, outbox
+depth, and the age of the oldest unresolved payment (the number to page
+on). Full endpoint and environment reference:
+[gateway README](gateway/README.md).
+
 ## Where to go next
 
 - **Understand the flow** you just ran: handbook
