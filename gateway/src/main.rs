@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use fednow_gateway::http::{router, AppState, ReconcileConfig};
-use fednow_gateway::{HttpSimPort, InMemoryStore, PaymentService};
+use fednow_gateway::{HttpSimPort, PaymentService, SqliteStore};
 
 #[tokio::main]
 async fn main() {
@@ -14,18 +14,18 @@ async fn main() {
         std::env::var("FEDNOW_GW_SIM_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
     let sender_rtn =
         std::env::var("FEDNOW_GW_SENDER_RTN").unwrap_or_else(|_| "021040078".to_string());
+    let db_path = std::env::var("FEDNOW_GW_DB").unwrap_or_else(|_| "fednow-gateway.db".to_string());
     let reconcile = ReconcileConfig {
         timeout_secs: env_i64("FEDNOW_GW_TIMEOUT_SECS", 20),
         backoff_secs: env_i64("FEDNOW_GW_BACKOFF_SECS", 30),
     };
     let sweep_secs = env_i64("FEDNOW_GW_SWEEP_SECS", 10).max(1) as u64;
 
+    let store =
+        SqliteStore::open(&db_path).unwrap_or_else(|e| panic!("cannot open {db_path}: {e}"));
+    eprintln!("event store: {db_path}");
     let state = Arc::new(AppState {
-        service: PaymentService::new(
-            InMemoryStore::new(),
-            HttpSimPort::new(sim_url.clone()),
-            sender_rtn,
-        ),
+        service: PaymentService::new(store, HttpSimPort::new(sim_url.clone()), sender_rtn),
         reconcile,
     });
 
@@ -35,6 +35,9 @@ async fn main() {
     std::thread::spawn(move || loop {
         std::thread::sleep(std::time::Duration::from_secs(sweep_secs));
         let now = Utc::now();
+        // Retry anything a transport failure left in the outbox…
+        sweeper.service.publish_pending(now.timestamp());
+        // …then run the timeout/query policy over every payment.
         let errors = sweeper.service.reconcile_all(
             &now.format("%Y%m%d").to_string(),
             now.timestamp(),

@@ -23,11 +23,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::payment::{Payment, PaymentState};
 use crate::service::{PaymentService, ServiceError, SubmitRequest};
-use crate::southbound::HttpSimPort;
-use crate::store::InMemoryStore;
-
-/// The concrete service wiring of the v0 binary.
-pub type GatewayService = PaymentService<InMemoryStore, HttpSimPort>;
+use crate::southbound::FedNowPort;
+use crate::store::PaymentStore;
 
 /// Reconciliation timing, in seconds.
 #[derive(Debug, Clone, Copy)]
@@ -36,18 +33,22 @@ pub struct ReconcileConfig {
     pub backoff_secs: i64,
 }
 
-pub struct AppState {
-    pub service: GatewayService,
+pub struct AppState<S, P> {
+    pub service: PaymentService<S, P>,
     pub reconcile: ReconcileConfig,
 }
 
-/// Build the HTTP router.
-pub fn router(state: Arc<AppState>) -> Router {
+/// Build the HTTP router over any store/port combination.
+pub fn router<S, P>(state: Arc<AppState<S, P>>) -> Router
+where
+    S: PaymentStore + Send + Sync + 'static,
+    P: FedNowPort + Send + Sync + 'static,
+{
     Router::new()
         .route("/healthz", get(|| async { "ok" }))
-        .route("/payments", post(submit_payment))
-        .route("/payments/{key}", get(get_payment))
-        .route("/payments/{key}/reconcile", post(reconcile_payment))
+        .route("/payments", post(submit_payment::<S, P>))
+        .route("/payments/{key}", get(get_payment::<S, P>))
+        .route("/payments/{key}/reconcile", post(reconcile_payment::<S, P>))
         .with_state(state)
 }
 
@@ -109,11 +110,15 @@ fn state_name(state: PaymentState) -> &'static str {
     }
 }
 
-async fn submit_payment(
-    State(state): State<Arc<AppState>>,
+async fn submit_payment<S, P>(
+    State(state): State<Arc<AppState<S, P>>>,
     headers: HeaderMap,
     Json(body): Json<SubmitBody>,
-) -> Response {
+) -> Response
+where
+    S: PaymentStore + Send + Sync + 'static,
+    P: FedNowPort + Send + Sync + 'static,
+{
     let Some(key) = headers
         .get("Idempotency-Key")
         .and_then(|v| v.to_str().ok())
@@ -156,17 +161,28 @@ async fn submit_payment(
     }
 }
 
-async fn get_payment(State(state): State<Arc<AppState>>, Path(key): Path<String>) -> Response {
+async fn get_payment<S, P>(
+    State(state): State<Arc<AppState<S, P>>>,
+    Path(key): Path<String>,
+) -> Response
+where
+    S: PaymentStore + Send + Sync + 'static,
+    P: FedNowPort + Send + Sync + 'static,
+{
     match state.service.load(&key) {
         Some(p) => (StatusCode::OK, Json(PaymentView::from(&p))).into_response(),
         None => (StatusCode::NOT_FOUND, "unknown payment").into_response(),
     }
 }
 
-async fn reconcile_payment(
-    State(state): State<Arc<AppState>>,
+async fn reconcile_payment<S, P>(
+    State(state): State<Arc<AppState<S, P>>>,
     Path(key): Path<String>,
-) -> Response {
+) -> Response
+where
+    S: PaymentStore + Send + Sync + 'static,
+    P: FedNowPort + Send + Sync + 'static,
+{
     let now = Utc::now();
     let date = now.format("%Y%m%d").to_string();
     let now_unix = now.timestamp();
