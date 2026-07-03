@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Test
+        run: cargo test --workspace
+
+      - name: Build release binaries
+        run: cargo build --release -p fednow-sim -p fednow-gateway -p fednow-conformance
+
+      - name: Package binaries
+        run: |
+          mkdir -p dist
+          cp target/release/fednow-sim target/release/fednow-gateway target/release/fednow-conformance dist/
+          cp LICENSE README.md CHANGELOG.md dist/
+          tar -C dist -czf "fednow-oss-${GITHUB_REF_NAME}-x86_64-linux.tar.gz" .
+
+      - name: Generate SBOM (SPDX)
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: fednow-oss-${{ github.ref_name }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Checksums
+        run: sha256sum fednow-oss-*.tar.gz fednow-oss-*.spdx.json > SHA256SUMS
+
+      - name: Extract release notes from the changelog
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v ver="$version" '
+            $0 ~ "^## \\[" ver "\\]" { grab = 1; next }
+            grab && /^## \[/ { exit }
+            grab { print }
+          ' CHANGELOG.md > RELEASE_NOTES.md
+          test -s RELEASE_NOTES.md || echo "See CHANGELOG.md." > RELEASE_NOTES.md
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: RELEASE_NOTES.md
+          files: |
+            fednow-oss-*.tar.gz
+            fednow-oss-*.spdx.json
+            SHA256SUMS
