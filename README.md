@@ -17,7 +17,7 @@ community banks, credit unions and service providers in the US.
 | `fednow-core` | [`core/`](core/) | 🚧 in progress | ISO 20022 library: parsing, validation (XSD facets + FedNow profile rules), message construction and XMLDSig signing |
 | `fednow-sim` | [`simulator/`](simulator/) | 🚧 v0 (HTTP dev mode) | Local FedNow simulator: accepts pacs.008, replies pacs.002 advices under configurable accept/reject/ACWP/timeout scenarios — a preparation tool for the Fed's Customer Testing Program (CTP) |
 | `fednow-gateway` | [`gateway/`](gateway/) | 🚧 v0 (REST + reconciler) | Production send middleware: event-sourced state machine, idempotency-keyed REST API, background pacs.028 reconciler; durable storage and the MQ adapter next |
-| `fednow-conformance` | [`conformance/`](conformance/) | 📋 planned | Conformance suite any implementation can run |
+| `fednow-conformance` | [`conformance/`](conformance/) | 🚧 v0 | Conformance suite any implementation can run: language-agnostic vector corpus, message validator CLI, and a live CTP scenario runner |
 
 ## Current milestone
 
@@ -33,8 +33,8 @@ cargo test --workspace
 
 ## Try the whole loop
 
-Two terminals: the simulator plays the FedNow Service, the gateway is your
-sending institution.
+One command (`docker compose up --build`), or two terminals: the simulator
+plays the FedNow Service, the gateway is your sending institution.
 
 ```sh
 # terminal 1 — the FedNow Service (simulated)

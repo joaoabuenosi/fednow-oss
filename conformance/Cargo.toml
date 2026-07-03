@@ -1,6 +1,6 @@
 [package]
 name = "fednow-conformance"
-description = "Conformance suite for fednow-core-compatible implementations (planned)"
+description = "Conformance suite: vector corpus, message validation CLI and live CTP scenario runner"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,3 +10,12 @@ authors.workspace = true
 
 [dependencies]
 fednow-core = { path = "../core" }
+thiserror = { workspace = true }
+serde = { workspace = true }
+toml = "0.8"
+ureq = "2"
+
+[dev-dependencies]
+fednow-sim = { path = "../simulator" }
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread"] }
