@@ -1,6 +1,6 @@
 [package]
 name = "fednow-sim"
-description = "Local FedNow simulator: accepts pacs.008, replies pacs.002, configurable scenarios (planned)"
+description = "Local FedNow Service simulator: accepts pacs.008, answers pacs.002 advices under configurable scenarios"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,3 +10,12 @@ authors.workspace = true
 
 [dependencies]
 fednow-core = { path = "../core" }
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+serde = { workspace = true }
+toml = "0.8"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
