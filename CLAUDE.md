@@ -42,13 +42,15 @@ Contexto do autor: Joca — engenheiro de pagamentos BR, experiência Pix em pro
 - Commits e código em inglês; discussão com Joca pode ser em PT-BR.
 
 ## Milestone atual
-**M3: fednow-sim v0 — simulador (HTTP dev mode + Docker) com cenários de
-aceite/rejeição/ACWP/timeout.**
-Feito: M1 — pacs.008 parse/validate (jul/2026); M2 — mensagens do fluxo de
-crédito nos perfis FedNow reais (pacs.008, pacs.002 dual, pacs.028, BAH),
-calibradas contra 81 samples oficiais. Assinatura pendente das Technical
-Specifications (doc restrito) — issue #14.
-Depois: cenários pacs.028 no sim → gateway v0 → guia "do zero ao CTP".
+**v0.1.0 LANÇADA (jul/2026)** — loop completo de envio ponta a ponta:
+core (5 mensagens nos perfis Release 1 reais, calibradas contra 81 samples
+oficiais + builders), fednow-sim (6 cenários CTP + reconciliação pacs.028),
+fednow-gateway (REST idempotente, event sourcing em SQLite, outbox real,
+reconciliador de fundo), fednow-conformance (corpus de vetores + runner de
+cenários), handbook (caps. timeout e zero-ao-CTP), release com SBOM.
+**M4 (próximo): modo MQ (sim + adapter do gateway) e camt.056/029.**
+Pendências externas: assinatura (issue #14 — Technical Specifications);
+exports das guidelines de returns p/ calibrar pacs.004.
 
 Repo: https://github.com/joaoabuenosi/fednow-oss (conta pessoal; org fica p/
 quando houver mantenedores externos). Main protegida: PR + CI verde obrigatórios.
