@@ -16,7 +16,7 @@ community banks, credit unions and service providers in the US.
 |---|---|---|---|
 | `fednow-core` | [`core/`](core/) | 🚧 in progress | ISO 20022 library: parsing, validation (XSD facets + FedNow profile rules), message construction and XMLDSig signing |
 | `fednow-sim` | [`simulator/`](simulator/) | 🚧 v0 (HTTP dev mode) | Local FedNow simulator: accepts pacs.008, replies pacs.002 advices under configurable accept/reject/ACWP/timeout scenarios — a preparation tool for the Fed's Customer Testing Program (CTP) |
-| `fednow-gateway` | [`gateway/`](gateway/) | 📋 planned | Production send middleware: hexagonal architecture, per-payment state machine, event sourcing, outbox pattern, pacs.028 reconciler |
+| `fednow-gateway` | [`gateway/`](gateway/) | 🚧 domain core | Production send middleware: per-payment state machine (event-sourced, idempotency-keyed) and pacs.028 reconciliation policy; ports, outbox publisher and durable storage next |
 | `fednow-conformance` | [`conformance/`](conformance/) | 📋 planned | Conformance suite any implementation can run |
 
 ## Current milestone

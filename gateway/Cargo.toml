@@ -10,3 +10,4 @@ authors.workspace = true
 
 [dependencies]
 fednow-core = { path = "../core" }
+thiserror = { workspace = true }
