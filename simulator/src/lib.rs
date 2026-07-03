@@ -52,8 +52,12 @@ pub enum Scenario {
     Settle,
     /// Advice `ACWP`: accepted without posting.
     AcceptWithoutPosting,
-    /// Advice `RJCT` with the given external reason code.
+    /// Advice `RJCT` with the given external reason code — a rejection by the
+    /// receiving participant (CTP scenario 3), e.g. `AC04`.
     Reject(String),
+    /// Advice `RJCT` with the given proprietary reason — a rejection by the
+    /// FedNow Service itself (CTP scenario 2), e.g. `E990`.
+    RejectService(String),
     /// No advice at all — the hard production case the reconciler exists for.
     /// Internally the payment still settles; pacs.028 reveals it.
     Timeout,
@@ -96,6 +100,9 @@ impl SimConfig {
                 "settle" => Scenario::Settle,
                 "accept-without-posting" => Scenario::AcceptWithoutPosting,
                 "reject" => Scenario::Reject(s.reason.unwrap_or_else(|| "AC04".to_string())),
+                "reject-service" => {
+                    Scenario::RejectService(s.reason.unwrap_or_else(|| "E990".to_string()))
+                }
                 "timeout" => Scenario::Timeout,
                 "delay" => Scenario::Delay(s.delay_ms.unwrap_or(2_000)),
                 other => return Err(format!("unknown action '{other}' for RTN {rtn}")),
@@ -127,6 +134,7 @@ pub fn decide(config: &SimConfig, doc: &pacs008::Document) -> Scenario {
         v if v.ends_with(".22") => Scenario::AcceptWithoutPosting,
         v if v.ends_with(".33") => Scenario::Timeout,
         v if v.ends_with(".44") => Scenario::Delay(2_000),
+        v if v.ends_with(".55") => Scenario::RejectService("E990".to_string()),
         _ => Scenario::Settle,
     }
 }
@@ -189,8 +197,9 @@ async fn handle_pacs008(state: &SimState, xml: &str) -> Response {
     let scenario = if issues.is_empty() {
         decide(&state.config, &doc)
     } else {
-        // Profile-invalid messages are always rejected, whatever the scenario.
-        Scenario::Reject("SIMV".to_string())
+        // Profile-invalid messages are always rejected by the service itself,
+        // whatever the scenario.
+        Scenario::RejectService("SIMV".to_string())
     };
 
     // The payment reaches a final state no matter what the sender sees: for
@@ -290,7 +299,7 @@ fn advice_xml(
     let status = match scenario {
         Scenario::Settle => "ACSC",
         Scenario::AcceptWithoutPosting => "ACWP",
-        Scenario::Reject(_) => "RJCT",
+        Scenario::Reject(_) | Scenario::RejectService(_) => "RJCT",
         Scenario::Timeout | Scenario::Delay(_) => {
             unreachable!("mapped to a final scenario before advice building")
         }
@@ -324,13 +333,14 @@ fn advice_xml(
             .acceptance_date_time(now_ts)
             .effective_interbank_settlement_date(today),
         Scenario::AcceptWithoutPosting => builder.acceptance_date_time(now_ts),
-        Scenario::Reject(code) if code == "SIMV" => {
+        Scenario::RejectService(code) if code == "SIMV" => {
             // Simulator-specific: validation failure, rule codes in AddtlInf.
             let detail: Vec<&str> = issues.iter().map(|i| i.code).take(5).collect();
             builder
                 .reason_proprietary("SIMV")
                 .additional_information(truncate(&detail.join(" "), 105))
         }
+        Scenario::RejectService(code) => builder.reason_proprietary(code.clone()),
         Scenario::Reject(code) => builder.reason_code(code.clone()),
         Scenario::Timeout | Scenario::Delay(_) => unreachable!(),
     };
