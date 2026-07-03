@@ -38,7 +38,11 @@ Priority: config file → amount trigger → default.
 | amount ends `.22` | accept without posting | `ACWP` |
 | amount ends `.33` | **timeout** | none — HTTP `202`, no pacs.002 |
 | amount ends `.44` | delayed settle | `ACSC` after 2 s |
+| amount ends `.55` | reject by the service | `RJCT` proprietary reason `E990` (vs `.11`'s participant reject) |
 | profile-invalid message | always rejected | `RJCT` proprietary reason `SIMV`, violated rule codes in `AddtlInf` |
+
+Each trigger maps to an official Customer Testing Program scenario — see the
+[zero-to-CTP chapter](../docs/handbook/04-zero-to-ctp.md).
 
 Config file (`fednow-sim.toml` or `FEDNOW_SIM_CONFIG`), keyed by creditor-agent
 routing number — see [fednow-sim.toml.example](fednow-sim.toml.example).

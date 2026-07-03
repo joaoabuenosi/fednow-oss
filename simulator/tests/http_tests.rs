@@ -297,6 +297,22 @@ async fn delay_scenario_settles_after_the_configured_delay() {
 }
 
 #[tokio::test]
+async fn amount_ending_55_is_rejected_by_the_service_with_a_proprietary_reason() {
+    // CTP scenario 2 (rejection by the FedNow Service) vs scenario 3
+    // (rejection by the participant, external code).
+    let (status, body) = post(SimConfig::default(), valid_pacs008(125_055)).await;
+    assert_eq!(status, StatusCode::OK);
+    let advice = parse_advice(&body);
+    let tx = &advice
+        .fi_to_fi_payment_status_report
+        .transaction_information_and_status[0];
+    assert_eq!(tx.transaction_status.as_deref(), Some("RJCT"));
+    let rsn = tx.status_reason_information[0].reason.as_ref().unwrap();
+    assert_eq!(rsn.proprietary.as_deref(), Some("E990"));
+    assert!(rsn.code.is_none());
+}
+
+#[tokio::test]
 async fn malformed_xml_is_a_400() {
     let (status, _) = post(SimConfig::default(), "<not-xml".to_string()).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
