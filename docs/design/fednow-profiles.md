@@ -108,6 +108,32 @@ and `Sts/Conf` restricted to **IPAY / RJCR / PDCR / PECR**; a rejection
 accompanies IPAY/PECR. BAH `MktPrctc/Id` for camt.029 uses the 3-letter
 contexts (`rrr`/`irr`/`rcr`).
 
+## MQ technical envelope (`FedNowIncoming` / `FedNowOutgoing`)
+
+On the MQ wire a business message travels inside a technical wrapper, named
+from the service's point of view (participants *send* `FedNowIncoming`,
+*receive* `FedNowOutgoing`):
+
+- Root: `FedNowIncoming` (ns `urn:fednow:incoming:v001`) / `FedNowOutgoing`
+  (ns `urn:fednow:outgoing:v001`).
+- Children in order: optional `FedNowTechnicalHeader` (open content, lax),
+  then `FedNowIncomingMessage`/`FedNowOutgoingMessage`.
+- The message element holds exactly one **type-specific wrapper**, each pairing
+  a `bah:AppHdr` with the business `Document`. Wrappers implemented by
+  fednow-core (same names in both directions):
+  `FedNowCustomerCreditTransfer` (pacs.008), `FedNowPaymentStatus` (pacs.002),
+  `FedNowPaymentStatusRequest` (pacs.028), `FedNowPaymentReturn` (pacs.004),
+  `FedNowReturnRequest` (camt.056), `FedNowReturnRequestResponse` (camt.029).
+- **No per-message signature element anywhere in the envelope** — see
+  `message-signing.md`.
+- Key-exchange operations use dedicated wrappers with a `SenderId`
+  (`[0-9]{9}`) and the `urn:fednow:security:external:v001` message set, and
+  carry no BAH.
+
+The envelope schemas themselves are Fed-confidential and are **not** vendored;
+`core/src/envelope.rs` implements only these interoperability facts, and the
+`envelope_*.xml` fixtures are deliberately outside the CI XSD-validation globs.
+
 ## Open items
 
 - Exact `LclInstrm`/`CtgyPurp` code values (FedNow code list).

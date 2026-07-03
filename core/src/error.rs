@@ -11,4 +11,6 @@ use thiserror::Error;
 pub enum ParseError {
     #[error("malformed XML or unexpected document structure: {0}")]
     Xml(#[from] quick_xml::DeError),
+    #[error("not a FedNow technical envelope: {0}")]
+    Envelope(String),
 }
