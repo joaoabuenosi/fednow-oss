@@ -39,6 +39,7 @@ Priority: config file → amount trigger → default.
 | amount ends `.33` | **timeout** | none — HTTP `202`, no pacs.002 |
 | amount ends `.44` | delayed settle | `ACSC` after 2 s |
 | amount ends `.55` | reject by the service | `RJCT` proprietary reason `E990` (vs `.11`'s participant reject) |
+| amount ends `.66` | ACWP + follow-up | `ACWP` now; `ACCC` follow-up queued, retrieved with a pacs.028 |
 | profile-invalid message | always rejected | `RJCT` proprietary reason `SIMV`, violated rule codes in `AddtlInf` |
 
 Each trigger maps to an official Customer Testing Program scenario — see the
