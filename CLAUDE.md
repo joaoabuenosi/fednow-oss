@@ -42,18 +42,17 @@ Contexto do autor: Joca — engenheiro de pagamentos BR, experiência Pix em pro
 - Commits e código em inglês; discussão com Joca pode ser em PT-BR.
 
 ## Milestone atual
-**v0.1.0 LANÇADA (jul/2026)**; **M4 CONCLUÍDO (jul/2026)** — semântica MQ
-ponta a ponta: core com envelope técnico (FedNowIncoming/Outgoing, split
-byte-exato p/ assinatura futura, validate_envelope, Head001Builder),
-camt.056/029 + pacs.004 calibrados, fednow-sim com modo MQ (send
-fire-and-forget + fila de advices por participante), fednow-gateway com
-adapter MQ (FEDNOW_GW_SOUTHBOUND=mq, pump de advices correlacionando por
-OrgnlMsgId). 7 mensagens, ~190 testes, 34 PRs.
-**M5 (próximo): endurecimento p/ adoção — cargo audit/Dependabot no CI,
-vetores de envelope no conformance, publicação no crates.io, handbook cap. 1,
-v0.2.0.**
-Pendência externa: assinatura (issue #14 — formato só no onboarding do Fed;
-rota realista: design partner via CTP ou FedNow Community).
+**v0.2.0 LANÇADA (jul/2026)** — M4 (semântica MQ ponta a ponta: envelope
+técnico no core, modo MQ no sim, adapter MQ no gateway) e M5 (endurecimento:
+cargo audit + Dependabot no CI — primeiro run já pegou e corrigiu 2 HIGH DoS
+no quick-xml —, 24 vetores de conformance incl. envelope, handbook cap. 1,
+metadados crates.io com dry-run verificado). 7 mensagens, ~190 testes, 40+ PRs.
+**M6 (próximo): transporte IBM MQ real (mTLS), divulgação (announce +
+handbook), SDKs Java/Python.**
+Pendências: publicar fednow-core no crates.io (precisa do token do Joca —
+`cargo publish -p fednow-core`); PRs major do Dependabot (rusqlite/toml/ureq/
+actions) aguardando revisão; assinatura (issue #14 — formato só no onboarding
+do Fed; rota realista: design partner via CTP ou FedNow Community).
 
 Repo: https://github.com/joaoabuenosi/fednow-oss (conta pessoal; org fica p/
 quando houver mantenedores externos). Main protegida: PR + CI verde obrigatórios.
