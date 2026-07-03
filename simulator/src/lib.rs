@@ -12,7 +12,8 @@
 //!    maps creditor-agent routing numbers to scenarios.
 //! 2. **Amount triggers** (zero-config, Stripe-sandbox style): a settlement
 //!    amount ending in `.11` is rejected (`RJCT`/`AC04`), `.22` is accepted
-//!    without posting (`ACWP`), `.33` times out (no advice — HTTP 202).
+//!    without posting (`ACWP`), `.33` times out (no advice — HTTP 202),
+//!    `.44` is settled after a 2-second delay.
 //! 3. **Default**: accepted and settled (`ACSC`).
 //!
 //! Messages that fail FedNow-profile validation are rejected with the
@@ -20,9 +21,17 @@
 //! `AddtlInf` — the real service's technical error codes live in the
 //! access-controlled Technical Specifications (issue #14) and will replace
 //! `SIMV` once known.
+//!
+//! ## The timeout lesson
+//!
+//! A timed-out payment is *unresolved*, not failed: the simulator still decides
+//! a final outcome internally (settled) — the sender just never hears it. The
+//! only correct move is a payment status request (pacs.028), posted to the same
+//! endpoint, which returns the withheld advice and reveals the truth. Blind
+//! resends would double-pay; the simulator exists to make that lesson cheap.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use axum::body::Bytes;
 use axum::extract::State;
@@ -32,8 +41,8 @@ use axum::routing::{get, post};
 use axum::Router;
 use chrono::{SecondsFormat, Utc};
 use fednow_core::builder::Pacs002Builder;
-use fednow_core::validate::validate_pacs008;
-use fednow_core::{pacs008, ValidationIssue};
+use fednow_core::validate::{validate_pacs008, validate_pacs028};
+use fednow_core::{pacs008, pacs028, ValidationIssue};
 use serde::Deserialize;
 
 /// What the simulator should do with an accepted message.
@@ -46,7 +55,10 @@ pub enum Scenario {
     /// Advice `RJCT` with the given external reason code.
     Reject(String),
     /// No advice at all — the hard production case the reconciler exists for.
+    /// Internally the payment still settles; pacs.028 reveals it.
     Timeout,
+    /// Advice `ACSC`, delivered after the given delay in milliseconds.
+    Delay(u64),
 }
 
 /// Runtime configuration: creditor-agent routing number → scenario.
@@ -65,6 +77,7 @@ struct RawConfig {
 struct RawScenario {
     action: String,
     reason: Option<String>,
+    delay_ms: Option<u64>,
 }
 
 impl SimConfig {
@@ -84,6 +97,7 @@ impl SimConfig {
                 "accept-without-posting" => Scenario::AcceptWithoutPosting,
                 "reject" => Scenario::Reject(s.reason.unwrap_or_else(|| "AC04".to_string())),
                 "timeout" => Scenario::Timeout,
+                "delay" => Scenario::Delay(s.delay_ms.unwrap_or(2_000)),
                 other => return Err(format!("unknown action '{other}' for RTN {rtn}")),
             };
             scenarios.insert(rtn, scenario);
@@ -112,8 +126,17 @@ pub fn decide(config: &SimConfig, doc: &pacs008::Document) -> Scenario {
         v if v.ends_with(".11") => Scenario::Reject("AC04".to_string()),
         v if v.ends_with(".22") => Scenario::AcceptWithoutPosting,
         v if v.ends_with(".33") => Scenario::Timeout,
+        v if v.ends_with(".44") => Scenario::Delay(2_000),
         _ => Scenario::Settle,
     }
+}
+
+/// Shared simulator state: configuration plus the advice ledger — every
+/// processed payment's final advice, keyed by the original message id, so a
+/// pacs.028 can always answer "what happened to X?".
+pub struct SimState {
+    pub config: SimConfig,
+    advices: Mutex<HashMap<String, String>>,
 }
 
 /// Build the HTTP router (exposed separately so tests drive it without a socket).
@@ -121,14 +144,33 @@ pub fn router(config: SimConfig) -> Router {
     Router::new()
         .route("/healthz", get(|| async { "ok" }))
         .route("/fednow/messages", post(handle_message))
-        .with_state(Arc::new(config))
+        .with_state(Arc::new(SimState {
+            config,
+            advices: Mutex::new(HashMap::new()),
+        }))
 }
 
-async fn handle_message(State(config): State<Arc<SimConfig>>, body: Bytes) -> Response {
+/// One endpoint, like one MQ channel: the message type is sniffed from the
+/// namespace.
+async fn handle_message(State(state): State<Arc<SimState>>, body: Bytes) -> Response {
     let Ok(xml) = std::str::from_utf8(&body) else {
         return (StatusCode::BAD_REQUEST, "body is not valid UTF-8").into_response();
     };
 
+    if xml.contains(pacs028::NAMESPACE) {
+        return handle_pacs028(&state, xml);
+    }
+    if xml.contains(pacs008::NAMESPACE) {
+        return handle_pacs008(&state, xml).await;
+    }
+    (
+        StatusCode::BAD_REQUEST,
+        "unrecognized message namespace (expected pacs.008 or pacs.028)",
+    )
+        .into_response()
+}
+
+async fn handle_pacs008(state: &SimState, xml: &str) -> Response {
     let doc = match pacs008::parse(xml) {
         Ok(d) => d,
         Err(e) => {
@@ -145,27 +187,85 @@ async fn handle_message(State(config): State<Arc<SimConfig>>, body: Bytes) -> Re
 
     let issues = validate_pacs008(&doc);
     let scenario = if issues.is_empty() {
-        decide(&config, &doc)
+        decide(&state.config, &doc)
     } else {
         // Profile-invalid messages are always rejected, whatever the scenario.
         Scenario::Reject("SIMV".to_string())
     };
 
+    // The payment reaches a final state no matter what the sender sees: for
+    // the timeout scenario the final outcome is "settled", it just goes
+    // unadvised until a pacs.028 asks.
+    let final_scenario = match &scenario {
+        Scenario::Timeout | Scenario::Delay(_) => &Scenario::Settle,
+        s => s,
+    };
+    let advice = match advice_xml(&doc, final_scenario, &issues) {
+        Ok(xml) => xml,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+    };
+    state.advices.lock().unwrap().insert(
+        doc.fi_to_fi_customer_credit_transfer
+            .group_header
+            .message_identification
+            .clone(),
+        advice.clone(),
+    );
+
     match scenario {
         Scenario::Timeout => StatusCode::ACCEPTED.into_response(),
-        s => {
-            let advice = advice_xml(&doc, &s, &issues);
-            match advice {
-                Ok(xml) => (
-                    StatusCode::OK,
-                    [(header::CONTENT_TYPE, "application/xml")],
-                    xml,
-                )
-                    .into_response(),
-                Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
-            }
+        Scenario::Delay(ms) => {
+            tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
+            xml_ok(advice)
         }
+        _ => xml_ok(advice),
     }
+}
+
+/// Answer a payment status request with the stored advice for the original
+/// message — the reconciliation flow.
+fn handle_pacs028(state: &SimState, xml: &str) -> Response {
+    let doc = match pacs028::parse(xml) {
+        Ok(d) => d,
+        Err(e) => {
+            return (StatusCode::BAD_REQUEST, format!("not a pacs.028: {e}")).into_response();
+        }
+    };
+    let issues = validate_pacs028(&doc);
+    if !issues.is_empty() {
+        let codes: Vec<&str> = issues.iter().map(|i| i.code).collect();
+        return (
+            StatusCode::BAD_REQUEST,
+            format!("invalid pacs.028: {}", codes.join(" ")),
+        )
+            .into_response();
+    }
+
+    let Some(orig_msg_id) = doc.fi_to_fi_payment_status_request.transaction_information[0]
+        .original_group_information
+        .as_ref()
+        .map(|o| o.original_message_identification.as_str())
+    else {
+        return (StatusCode::BAD_REQUEST, "missing OrgnlGrpInf").into_response();
+    };
+
+    match state.advices.lock().unwrap().get(orig_msg_id) {
+        Some(advice) => xml_ok(advice.clone()),
+        None => (
+            StatusCode::NOT_FOUND,
+            format!("no payment known for original message id '{orig_msg_id}'"),
+        )
+            .into_response(),
+    }
+}
+
+fn xml_ok(xml: String) -> Response {
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "application/xml")],
+        xml,
+    )
+        .into_response()
 }
 
 /// Build the pacs.002 service advice for an accepted-for-processing pacs.008.
@@ -191,7 +291,9 @@ fn advice_xml(
         Scenario::Settle => "ACSC",
         Scenario::AcceptWithoutPosting => "ACWP",
         Scenario::Reject(_) => "RJCT",
-        Scenario::Timeout => unreachable!("timeout produces no advice"),
+        Scenario::Timeout | Scenario::Delay(_) => {
+            unreachable!("mapped to a final scenario before advice building")
+        }
     };
 
     let instg = agent_rtn(&tx.instructing_agent).unwrap_or("021150706");
@@ -230,7 +332,7 @@ fn advice_xml(
                 .additional_information(truncate(&detail.join(" "), 105))
         }
         Scenario::Reject(code) => builder.reason_code(code.clone()),
-        Scenario::Timeout => unreachable!(),
+        Scenario::Timeout | Scenario::Delay(_) => unreachable!(),
     };
 
     builder.to_xml().map_err(|e| e.to_string())
