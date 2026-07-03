@@ -67,6 +67,9 @@ pub enum PaymentEvent {
     Created {
         idempotency_key: String,
         message_identification: String,
+        /// ISO 8601 creation date-time of the pacs.008 (needed later to
+        /// identify the original message in a pacs.028).
+        creation_date_time: String,
         end_to_end_identification: String,
         uetr: Option<String>,
         amount_cents: u64,
@@ -113,6 +116,9 @@ pub struct Payment {
     pub state: PaymentState,
     pub idempotency_key: String,
     pub message_identification: String,
+    pub creation_date_time: String,
+    pub end_to_end_identification: String,
+    pub uetr: Option<String>,
     pub published_at_unix: Option<i64>,
     pub last_query_at_unix: Option<i64>,
     pub queries_sent: u32,
@@ -130,11 +136,17 @@ impl Payment {
             PaymentEvent::Created {
                 idempotency_key,
                 message_identification,
+                creation_date_time,
+                end_to_end_identification,
+                uetr,
                 ..
             } => Ok(Self {
                 state: PaymentState::Created,
                 idempotency_key: idempotency_key.clone(),
                 message_identification: message_identification.clone(),
+                creation_date_time: creation_date_time.clone(),
+                end_to_end_identification: end_to_end_identification.clone(),
+                uetr: uetr.clone(),
                 published_at_unix: None,
                 last_query_at_unix: None,
                 queries_sent: 0,
