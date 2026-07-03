@@ -37,19 +37,38 @@ Priority: config file → amount trigger → default.
 | amount ends `.11` | reject | `RJCT` reason `AC04` |
 | amount ends `.22` | accept without posting | `ACWP` |
 | amount ends `.33` | **timeout** | none — HTTP `202`, no pacs.002 |
+| amount ends `.44` | delayed settle | `ACSC` after 2 s |
 | profile-invalid message | always rejected | `RJCT` proprietary reason `SIMV`, violated rule codes in `AddtlInf` |
 
 Config file (`fednow-sim.toml` or `FEDNOW_SIM_CONFIG`), keyed by creditor-agent
 routing number — see [fednow-sim.toml.example](fednow-sim.toml.example).
+Actions: `settle`, `accept-without-posting`, `reject` (+ `reason`), `timeout`,
+`delay` (+ `delay_ms`). The real service's technical error codes will replace
+`SIMV` once the Technical Specifications are available (issue #14).
 
-The timeout scenario is the point of this simulator: your sender must resolve
-it with a payment status request (pacs.028), never a blind resend. The real
-service's technical error codes will replace `SIMV` once the Technical
-Specifications are available (issue #14).
+## Timeout reconciliation — the point of this simulator
+
+A timed-out payment is *unresolved*, not failed: internally it still settled;
+your sender just never heard it. The simulator keeps an advice ledger for every
+processed payment, and a **payment status request (pacs.028)** — posted to the
+same endpoint, like on the real MQ channel — returns the withheld advice:
+
+```sh
+# 1. Send a pacs.008 with an amount ending in .33 → HTTP 202, no advice.
+# 2. Ask what happened:
+curl -s -X POST --data-binary @pacs028.xml \
+  -H "content-type: application/xml" http://localhost:8080/fednow/messages
+# → the ACSC advice: it settled all along. A blind resend would have paid twice.
+```
+
+Unknown original message id → HTTP `404`. The full walkthrough lives in the
+FedNow Integration Handbook chapter on timeout reconciliation (`docs/handbook/`).
 
 ## Endpoints
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/fednow/messages` | pacs.008 in, pacs.002 advice out |
+| POST | `/fednow/messages` | pacs.008 → pacs.002 advice; pacs.028 → stored advice replay |
 | GET | `/healthz` | liveness |
+
+State is in-memory and per-process (v0): restart forgets past payments.
