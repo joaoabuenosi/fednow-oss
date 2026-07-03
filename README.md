@@ -2,8 +2,8 @@
 
 **Open-source tooling to lower the cost of building _send_ capability on the FedNow® Service.**
 
-> ⚠️ **Early development.** Nothing here is production-ready yet. APIs will change without
-> notice until v0.1. Follow the issues/milestones to see where we are.
+> ⚠️ **Early development (v0.2.0).** Not production-ready yet; pre-1.0 minor
+> versions may break APIs. See the [CHANGELOG](CHANGELOG.md) and issues/milestones.
 
 Most of the 1,500+ institutions on the FedNow network are receive-only: implementing the
 send side (ISO 20022 messaging, signing, timeout reconciliation, 24x7 operations) is
@@ -14,18 +14,20 @@ community banks, credit unions and service providers in the US.
 
 | Crate | Directory | Status | What it is |
 |---|---|---|---|
-| `fednow-core` | [`core/`](core/) | 🚧 in progress | ISO 20022 library: parsing, validation (XSD facets + FedNow profile rules), message construction and XMLDSig signing |
-| `fednow-sim` | [`simulator/`](simulator/) | 🚧 v0 (HTTP dev mode) | Local FedNow simulator: accepts pacs.008, replies pacs.002 advices under configurable accept/reject/ACWP/timeout scenarios — a preparation tool for the Fed's Customer Testing Program (CTP) |
-| `fednow-gateway` | [`gateway/`](gateway/) | 🚧 v0 (REST + reconciler) | Production send middleware: event-sourced state machine, idempotency-keyed REST API, background pacs.028 reconciler; durable storage and the MQ adapter next |
-| `fednow-conformance` | [`conformance/`](conformance/) | 🚧 v0 | Conformance suite any implementation can run: language-agnostic vector corpus, message validator CLI, and a live CTP scenario runner |
+| `fednow-core` | [`core/`](core/) | ✅ 7 message types | ISO 20022 library: parsing, validation (XSD facets + FedNow Release 1 profile rules, calibrated against the 81 official samples), builders, and the MQ technical envelope (`FedNowIncoming`/`FedNowOutgoing`) |
+| `fednow-sim` | [`simulator/`](simulator/) | ✅ HTTP + MQ modes | Local FedNow simulator: configurable accept/reject/ACWP/timeout scenarios over a synchronous dev endpoint *or* MQ-style queue-pair semantics — a preparation tool for the Fed's Customer Testing Program (CTP) |
+| `fednow-gateway` | [`gateway/`](gateway/) | ✅ full send loop | Send middleware: event-sourced state machine on SQLite, idempotency-keyed REST API, real outbox, background pacs.028 reconciler, and an MQ-style southbound adapter (`FEDNOW_GW_SOUTHBOUND=mq`) |
+| `fednow-conformance` | [`conformance/`](conformance/) | ✅ 24 vectors | Conformance suite any implementation can run: language-agnostic vector corpus (bare Documents + envelopes), message validator CLI, and a live CTP scenario runner |
 
 ## Current milestone
 
-**M3 — `fednow-sim` v0: local simulator with accept/reject/timeout scenarios.**
-Done: M1 (pacs.008 parse/validate); M2 (credit-transfer message set on the real
-FedNow profiles, calibrated against the official Release 1 samples — message
-signing is tracked in [#14](https://github.com/joaoabuenosi/fednow-oss/issues/14),
-blocked on the access-controlled Technical Specifications).
+**Done through v0.2.0**: the complete send loop (build → validate → send →
+advise → reconcile) with production MQ semantics end to end, the returns
+message set (pacs.004, camt.056/029), supply-chain guardrails (cargo audit +
+Dependabot), and handbook chapters 1, 2 and 4. Message **signing** is tracked
+in [#14](https://github.com/joaoabuenosi/fednow-oss/issues/14), blocked on the
+Fed's access-controlled Technical Specifications (distributed at onboarding).
+**Next**: real IBM MQ transport, crates.io publication, Java/Python SDKs.
 
 ```sh
 cargo test --workspace

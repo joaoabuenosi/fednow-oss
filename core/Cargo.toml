@@ -1,6 +1,9 @@
 [package]
 name = "fednow-core"
-description = "ISO 20022 parsing, validation, construction and signing for FedNow send-side integrations"
+description = "ISO 20022 parsing, validation and construction for FedNow send-side integrations"
+readme = "README.md"
+keywords = ["fednow", "iso20022", "payments", "banking", "fintech"]
+categories = ["parser-implementations", "finance"]
 version.workspace = true
 edition.workspace = true
 license.workspace = true
