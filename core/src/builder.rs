@@ -424,6 +424,115 @@ impl Pacs002Builder {
     }
 }
 
+/// Builder for a pacs.028 payment status request — the reconciliation
+/// primitive: ask about a previously sent payment instead of resending it.
+#[derive(Debug, Clone)]
+pub struct Pacs028Builder {
+    message_identification: String,
+    creation_date_time: String,
+    original_message_identification: String,
+    original_message_name_identification: String,
+    original_creation_date_time: String,
+    instructing_agent_routing_number: String,
+    instructed_agent_routing_number: String,
+    original_instruction_identification: Option<String>,
+    original_end_to_end_identification: Option<String>,
+    original_uetr: Option<String>,
+}
+
+impl Pacs028Builder {
+    /// Start a status request for the original message identified by
+    /// `original_message_identification` / `original_creation_date_time`
+    /// (a pacs.008 unless overridden).
+    pub fn new(
+        message_identification: impl Into<String>,
+        creation_date_time: impl Into<String>,
+        original_message_identification: impl Into<String>,
+        original_creation_date_time: impl Into<String>,
+        instructing_agent_routing_number: impl Into<String>,
+        instructed_agent_routing_number: impl Into<String>,
+    ) -> Self {
+        Self {
+            message_identification: message_identification.into(),
+            creation_date_time: creation_date_time.into(),
+            original_message_identification: original_message_identification.into(),
+            original_message_name_identification: "pacs.008.001.08".to_string(),
+            original_creation_date_time: original_creation_date_time.into(),
+            instructing_agent_routing_number: instructing_agent_routing_number.into(),
+            instructed_agent_routing_number: instructed_agent_routing_number.into(),
+            original_instruction_identification: None,
+            original_end_to_end_identification: None,
+            original_uetr: None,
+        }
+    }
+
+    /// Override the original message name (defaults to `pacs.008.001.08`).
+    pub fn original_message_name_identification(mut self, v: impl Into<String>) -> Self {
+        self.original_message_name_identification = v.into();
+        self
+    }
+
+    pub fn original_instruction_identification(mut self, v: impl Into<String>) -> Self {
+        self.original_instruction_identification = Some(v.into());
+        self
+    }
+
+    pub fn original_end_to_end_identification(mut self, v: impl Into<String>) -> Self {
+        self.original_end_to_end_identification = Some(v.into());
+        self
+    }
+
+    pub fn original_uetr(mut self, v: impl Into<String>) -> Self {
+        self.original_uetr = Some(v.into());
+        self
+    }
+
+    /// Build the typed document.
+    pub fn build(&self) -> crate::pacs028::Document {
+        use crate::pacs002::OriginalGroupInformation;
+        use crate::pacs028::{
+            Document as P28Document, FIToFIPaymentStatusRequestV03, GroupHeader, PaymentTransaction,
+        };
+
+        P28Document {
+            xmlns: Some(crate::pacs028::NAMESPACE.to_string()),
+            fi_to_fi_payment_status_request: FIToFIPaymentStatusRequestV03 {
+                group_header: GroupHeader {
+                    message_identification: self.message_identification.clone(),
+                    creation_date_time: self.creation_date_time.clone(),
+                },
+                transaction_information: vec![PaymentTransaction {
+                    original_group_information: Some(OriginalGroupInformation {
+                        original_message_identification: self
+                            .original_message_identification
+                            .clone(),
+                        original_message_name_identification: self
+                            .original_message_name_identification
+                            .clone(),
+                        original_creation_date_time: Some(self.original_creation_date_time.clone()),
+                    }),
+                    original_instruction_identification: self
+                        .original_instruction_identification
+                        .clone(),
+                    original_end_to_end_identification: self
+                        .original_end_to_end_identification
+                        .clone(),
+                    original_transaction_identification: None,
+                    original_uetr: self.original_uetr.clone(),
+                    instructing_agent: Some(agent(&self.instructing_agent_routing_number)),
+                    instructed_agent: Some(agent(&self.instructed_agent_routing_number)),
+                }],
+            },
+        }
+    }
+
+    /// Build and serialize to the XML wire form (with XML declaration).
+    pub fn to_xml(&self) -> Result<String, BuildError> {
+        let body = quick_xml::se::to_string(&self.build())?;
+        Ok(format!(r#"<?xml version="1.0" encoding="UTF-8"?>{body}"#))
+    }
+}
+
 /// `1250.00`-style lexical form from cents; never floating point.
 fn format_cents(cents: u64) -> String {
     format!("{}.{:02}", cents / 100, cents % 100)
