@@ -1,10 +1,11 @@
 //! Judge one message against the FedNow Release 1 profiles.
 
 use fednow_core::validate::{
-    validate_camt029, validate_camt056, validate_head001, validate_pacs002_direction,
-    validate_pacs004, validate_pacs008, validate_pacs028, Pacs002Direction, ValidationIssue,
+    validate_camt029, validate_camt056, validate_envelope, validate_head001,
+    validate_pacs002_direction, validate_pacs004, validate_pacs008, validate_pacs028,
+    Pacs002Direction, ValidationIssue,
 };
-use fednow_core::{camt029, camt056, head001, pacs002, pacs004, pacs008, pacs028};
+use fednow_core::{camt029, camt056, envelope, head001, pacs002, pacs004, pacs008, pacs028};
 
 /// Which FedNow direction a pacs.002 must be judged against.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,6 +33,14 @@ pub enum CheckError {
 
 /// Detect the message type from the namespace, parse and validate.
 pub fn check(xml: &str, direction: Direction) -> Result<Verdict, CheckError> {
+    // Envelopes first: they contain the BAH and Document namespaces too, so
+    // the wrapper namespace must win the dispatch.
+    if xml.contains(envelope::NAMESPACE_INCOMING) || xml.contains(envelope::NAMESPACE_OUTGOING) {
+        return Ok(Verdict {
+            message_type: "envelope",
+            issues: validate_envelope(&envelope::parse(xml)?),
+        });
+    }
     if xml.contains(pacs008::NAMESPACE) {
         return Ok(Verdict {
             message_type: "pacs.008",

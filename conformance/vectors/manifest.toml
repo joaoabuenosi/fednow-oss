@@ -100,3 +100,21 @@ valid = true
 file = "camt029/rjcr-without-reason.xml"
 valid = false
 codes = ["fednow.rjcr.reason"]
+
+[[vector]]
+file = "envelope/valid-incoming-pacs008.xml"
+valid = true
+
+[[vector]]
+file = "envelope/valid-outgoing-pacs002.xml"
+valid = true
+
+[[vector]]
+file = "envelope/wrapper-document-mismatch.xml"
+valid = false
+codes = ["fednow.env.wrapper.match"]
+
+[[vector]]
+file = "envelope/msgdefidr-mismatch.xml"
+valid = false
+codes = ["fednow.env.msgdefidr.match"]
