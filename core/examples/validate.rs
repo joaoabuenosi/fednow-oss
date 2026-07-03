@@ -11,10 +11,10 @@
 use std::process::ExitCode;
 
 use fednow_core::validate::{
-    validate_head001, validate_pacs002_direction, validate_pacs008, validate_pacs028,
-    Pacs002Direction, ValidationIssue,
+    validate_head001, validate_pacs002_direction, validate_pacs004, validate_pacs008,
+    validate_pacs028, Pacs002Direction, ValidationIssue,
 };
-use fednow_core::{head001, pacs002, pacs008, pacs028};
+use fednow_core::{head001, pacs002, pacs004, pacs008, pacs028};
 
 fn main() -> ExitCode {
     let Some(path) = std::env::args().nth(1) else {
@@ -56,6 +56,11 @@ fn main() -> ExitCode {
     } else if xml.contains(pacs028::NAMESPACE) {
         match pacs028::parse(&xml) {
             Ok(doc) => validate_pacs028(&doc),
+            Err(e) => return parse_error(&path, e),
+        }
+    } else if xml.contains(pacs004::NAMESPACE) {
+        match pacs004::parse(&xml) {
+            Ok(doc) => validate_pacs004(&doc),
             Err(e) => return parse_error(&path, e),
         }
     } else if xml.contains(head001::NAMESPACE) {

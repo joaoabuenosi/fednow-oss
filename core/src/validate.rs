@@ -13,7 +13,7 @@
 //! All issues are collected; nothing short-circuits.
 
 use crate::pacs008::{ActiveCurrencyAndAmount, CreditTransferTransaction, Document, NAMESPACE};
-use crate::{head001, pacs002, pacs028};
+use crate::{head001, pacs002, pacs004, pacs028};
 
 /// Where a validation requirement comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -540,6 +540,172 @@ fn validate_original_group_information(
             }
         }
     }
+}
+
+/// Validate a parsed pacs.004 payment return.
+///
+/// Enforces the base XSD facets plus the FedNow-shared lexical rules (message
+/// id shape, single transaction, FDN clearing system, USABA agents, USD cent
+/// amounts, original-message identification). The full Release 1 profile is
+/// pending calibration against the PaymentReturn usage-guideline export.
+pub fn validate_pacs004(doc: &pacs004::Document) -> Vec<ValidationIssue> {
+    let mut issues = Vec::new();
+
+    if doc.xmlns.as_deref() != Some(pacs004::NAMESPACE) {
+        issues.push(ValidationIssue::new(
+            "xsd.namespace",
+            "Document",
+            format!(
+                "expected namespace {}, found {}",
+                pacs004::NAMESPACE,
+                doc.xmlns.as_deref().unwrap_or("(none)")
+            ),
+            RuleSource::XsdFacet,
+        ));
+    }
+
+    let msg = &doc.payment_return;
+    let hdr = &msg.group_header;
+
+    check_max35text(
+        &mut issues,
+        "xsd.msgid.length",
+        "GrpHdr/MsgId",
+        &hdr.message_identification,
+    );
+    if !is_fednow_message_id(&hdr.message_identification) {
+        issues.push(ValidationIssue::new(
+            "fednow.msgid.format",
+            "GrpHdr/MsgId",
+            format!(
+                "'{}' is not a FedNow message id (CCYYMMDD + 9-char connection party id + 1..18-char reference)",
+                hdr.message_identification
+            ),
+            RuleSource::FedNowProfile,
+        ));
+    }
+
+    if !is_iso_date_time(&hdr.creation_date_time) {
+        issues.push(ValidationIssue::new(
+            "xsd.credttm.format",
+            "GrpHdr/CreDtTm",
+            format!(
+                "'{}' is not a valid ISO 8601 date-time",
+                hdr.creation_date_time
+            ),
+            RuleSource::XsdFacet,
+        ));
+    }
+
+    if hdr.number_of_transactions != "1" {
+        issues.push(ValidationIssue::new(
+            "fednow.nboftxs.one",
+            "GrpHdr/NbOfTxs",
+            "the FedNow flows carry one returned transaction per message".to_string(),
+            RuleSource::FedNowProfile,
+        ));
+    }
+
+    if hdr.settlement_information.settlement_method != "CLRG" {
+        issues.push(ValidationIssue::new(
+            "fednow.sttlmmtd.clrg",
+            "GrpHdr/SttlmInf/SttlmMtd",
+            format!(
+                "FedNow settles as a clearing system: SttlmMtd must be CLRG, found '{}'",
+                hdr.settlement_information.settlement_method
+            ),
+            RuleSource::FedNowProfile,
+        ));
+    }
+    let clr_sys_cd = hdr
+        .settlement_information
+        .clearing_system
+        .as_ref()
+        .and_then(|c| c.code.as_deref());
+    if clr_sys_cd != Some("FDN") {
+        issues.push(ValidationIssue::new(
+            "fednow.clrsys.fdn",
+            "GrpHdr/SttlmInf/ClrSys/Cd",
+            format!(
+                "the FedNow profile requires ClrSys/Cd 'FDN', found {}",
+                clr_sys_cd.unwrap_or("(none)")
+            ),
+            RuleSource::FedNowProfile,
+        ));
+    }
+
+    if msg.transaction_information.len() != 1 {
+        issues.push(ValidationIssue::new(
+            "fednow.txinf.one",
+            "TxInf",
+            format!(
+                "expected exactly one TxInf, found {}",
+                msg.transaction_information.len()
+            ),
+            RuleSource::FedNowProfile,
+        ));
+    }
+
+    for (i, tx) in msg.transaction_information.iter().enumerate() {
+        let base = format!("TxInf[{i}]");
+
+        validate_original_group_information(
+            &mut issues,
+            &base,
+            tx.original_group_information.as_ref(),
+        );
+
+        if let Some(uetr) = &tx.original_uetr {
+            if !is_uetr(uetr) {
+                issues.push(ValidationIssue::new(
+                    "xsd.uetr.pattern",
+                    format!("{base}/OrgnlUETR"),
+                    format!("'{uetr}' is not a lowercase UUID v4 as required by the UUIDv4Identifier pattern"),
+                    RuleSource::XsdFacet,
+                ));
+            }
+        }
+
+        validate_amount(
+            &mut issues,
+            &format!("{base}/RtrdIntrBkSttlmAmt"),
+            &tx.returned_interbank_settlement_amount,
+        );
+
+        for (agent, code, tag) in [
+            (
+                &tx.instructing_agent,
+                "fednow.instgagt.required",
+                "InstgAgt",
+            ),
+            (&tx.instructed_agent, "fednow.instdagt.required", "InstdAgt"),
+        ] {
+            match agent {
+                None => issues.push(ValidationIssue::new(
+                    code,
+                    format!("{base}/{tag}"),
+                    format!("the FedNow flows require {tag}"),
+                    RuleSource::FedNowProfile,
+                )),
+                Some(a) => validate_frs_agent(&mut issues, &format!("{base}/{tag}"), a),
+            }
+        }
+
+        if !tx.return_reason_information.iter().any(|r| {
+            r.reason
+                .as_ref()
+                .is_some_and(|x| x.code.is_some() || x.proprietary.is_some())
+        }) {
+            issues.push(ValidationIssue::new(
+                "fednow.rtrrsn.required",
+                format!("{base}/RtrRsnInf"),
+                "a payment return must carry a return reason".to_string(),
+                RuleSource::FedNowProfile,
+            ));
+        }
+    }
+
+    issues
 }
 
 /// Validate a parsed pacs.028 payment status request against the FedNow profile.
@@ -1090,7 +1256,11 @@ fn validate_transaction(
         }
     }
 
-    validate_amount(issues, &base, &tx.interbank_settlement_amount);
+    validate_amount(
+        issues,
+        &format!("{base}/IntrBkSttlmAmt"),
+        &tx.interbank_settlement_amount,
+    );
 
     if tx.interbank_settlement_date.is_none() {
         issues.push(ValidationIssue::new(
@@ -1219,10 +1389,10 @@ fn is_fednow_message_id(s: &str) -> bool {
 
 fn validate_amount(
     issues: &mut Vec<ValidationIssue>,
-    base: &str,
+    path: &str,
     amount: &ActiveCurrencyAndAmount,
 ) {
-    let path = format!("{base}/IntrBkSttlmAmt");
+    let path = path.to_string();
 
     let ccy = &amount.currency;
     if ccy.len() != 3 || !ccy.bytes().all(|b| b.is_ascii_uppercase()) {

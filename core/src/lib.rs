@@ -24,12 +24,13 @@ pub mod builder;
 pub mod error;
 pub mod head001;
 pub mod pacs002;
+pub mod pacs004;
 pub mod pacs008;
 pub mod pacs028;
 pub mod validate;
 
 pub use error::ParseError;
 pub use validate::{
-    validate_head001, validate_pacs002, validate_pacs002_direction, validate_pacs008,
-    validate_pacs028, Pacs002Direction, RuleSource, ValidationIssue,
+    validate_head001, validate_pacs002, validate_pacs002_direction, validate_pacs004,
+    validate_pacs008, validate_pacs028, Pacs002Direction, RuleSource, ValidationIssue,
 };
