@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use fednow_gateway::http::{router, AppState, ReconcileConfig};
-use fednow_gateway::{HttpSimPort, PaymentService, SqliteStore};
+use fednow_gateway::{AnyPort, HttpSimPort, MqSimPort, PaymentService, SqliteStore};
 
 #[tokio::main]
 async fn main() {
@@ -21,11 +21,20 @@ async fn main() {
     };
     let sweep_secs = env_i64("FEDNOW_GW_SWEEP_SECS", 10).max(1) as u64;
 
+    // Southbound flavor: "http" (synchronous dev mode, default) or "mq"
+    // (fire-and-forget sends + advice queue — the production semantics).
+    let southbound = std::env::var("FEDNOW_GW_SOUTHBOUND").unwrap_or_else(|_| "http".to_string());
+    let port = match southbound.as_str() {
+        "mq" => AnyPort::Mq(MqSimPort::new(sim_url.clone(), sender_rtn.clone())),
+        "http" => AnyPort::Http(HttpSimPort::new(sim_url.clone())),
+        other => panic!("FEDNOW_GW_SOUTHBOUND must be 'http' or 'mq', found '{other}'"),
+    };
+
     let store =
         SqliteStore::open(&db_path).unwrap_or_else(|e| panic!("cannot open {db_path}: {e}"));
     eprintln!("event store: {db_path}");
     let state = Arc::new(AppState {
-        service: PaymentService::new(store, HttpSimPort::new(sim_url.clone()), sender_rtn),
+        service: PaymentService::new(store, port, sender_rtn),
         reconcile,
     });
 
@@ -37,6 +46,8 @@ async fn main() {
         let now = Utc::now();
         // Retry anything a transport failure left in the outbox…
         sweeper.service.publish_pending(now.timestamp());
+        // …drain asynchronously delivered advices (MQ mode; no-op over HTTP)…
+        sweeper.service.pump_advices(now.timestamp());
         // …then run the timeout/query policy over every payment.
         let errors = sweeper.service.reconcile_all(
             &now.format("%Y%m%d").to_string(),

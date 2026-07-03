@@ -10,6 +10,7 @@
 //! failures resolve via pacs.028 (the reconciler) — never a resend.
 
 use fednow_core::builder::{fednow_message_id, Pacs008Builder, Pacs028Builder};
+use fednow_core::envelope::{self, EnvelopedDocument};
 use fednow_core::validate::validate_pacs008;
 use fednow_core::{pacs002, pacs008};
 use thiserror::Error;
@@ -180,6 +181,72 @@ impl<S: PaymentStore, P: FedNowPort> PaymentService<S, P> {
             }
         }
         published
+    }
+
+    /// Drain asynchronously delivered advices (MQ-style transports) and apply
+    /// each to its payment. Returns how many advices changed a payment.
+    ///
+    /// Unknown or unusable envelopes are skipped, not fatal: an advice for a
+    /// payment this gateway does not know (e.g. after a wipe) must not stall
+    /// the queue behind it.
+    pub fn pump_advices(&self, now_unix: i64) -> usize {
+        let mut applied = 0;
+        while let Ok(Some(envelope_xml)) = self.port.poll_advice() {
+            if let Ok(Some(_)) = self.apply_advice_envelope(&envelope_xml, now_unix) {
+                applied += 1;
+            }
+        }
+        applied
+    }
+
+    /// Apply one received `FedNowOutgoing` envelope: correlate the pacs.002
+    /// advice to a payment by its original message id and advance the state
+    /// machine. Returns the updated payment, or `None` when the envelope is
+    /// not an advice / references no known payment.
+    pub fn apply_advice_envelope(
+        &self,
+        envelope_xml: &str,
+        now_unix: i64,
+    ) -> Result<Option<Payment>, ServiceError> {
+        let env = envelope::parse(envelope_xml).map_err(|e| ServiceError::Build(e.to_string()))?;
+        let EnvelopedDocument::PaymentStatus(doc) = &env.document else {
+            return Ok(None);
+        };
+        let Some(original_message_id) = doc
+            .fi_to_fi_payment_status_report
+            .transaction_information_and_status
+            .first()
+            .and_then(|tx| tx.original_group_information.as_ref())
+            .map(|o| o.original_message_identification.as_str())
+        else {
+            return Ok(None);
+        };
+        let Some(payment) = self.find_by_message_identification(original_message_id) else {
+            return Ok(None);
+        };
+
+        let Some((status, reason)) = advice_from_pacs002(doc) else {
+            return Ok(None);
+        };
+        let updated = self.store.append(
+            &payment.idempotency_key,
+            PaymentEvent::AdviceReceived {
+                status,
+                reason,
+                at_unix: now_unix,
+            },
+        )?;
+        Ok(Some(updated))
+    }
+
+    fn find_by_message_identification(&self, message_identification: &str) -> Option<Payment> {
+        // Linear over the key set: fine for the development stores; a
+        // production store can grow an indexed lookup behind the same trait.
+        self.store
+            .keys()
+            .into_iter()
+            .filter_map(|k| self.store.load(&k))
+            .find(|p| p.message_identification == message_identification)
     }
 
     /// Drive reconciliation for one payment: declare the timeout when due,

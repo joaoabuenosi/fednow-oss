@@ -31,6 +31,6 @@ pub mod store;
 pub use payment::{advice_from_pacs002, AdviceStatus, Payment, PaymentEvent, PaymentState};
 pub use reconciler::{reconciliation_action, ReconciliationAction};
 pub use service::{PaymentService, ServiceError, SubmitRequest};
-pub use southbound::{FedNowPort, HttpSimPort, PortError, SubmitOutcome};
+pub use southbound::{AnyPort, FedNowPort, HttpSimPort, MqSimPort, PortError, SubmitOutcome};
 pub use sqlite::SqliteStore;
 pub use store::{CreateOutcome, InMemoryStore, OutboxEntry, PaymentStore};
