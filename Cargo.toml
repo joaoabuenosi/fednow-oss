@@ -6,7 +6,7 @@ members = ["core", "simulator", "gateway", "conformance"]
 version = "0.2.0"
 edition = "2021"
 license = "Apache-2.0"
-rust-version = "1.75"
+rust-version = "1.95"
 repository = "https://github.com/joaoabuenosi/fednow-oss"
 authors = ["FedNow OSS contributors"]
 

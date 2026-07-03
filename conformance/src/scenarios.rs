@@ -26,20 +26,16 @@ struct Ctx {
 impl Ctx {
     fn post(&self, xml: &str) -> Result<(u16, String), String> {
         let url = format!("{}/fednow/messages", self.base_url);
-        match ureq::post(&url)
-            .set("content-type", "application/xml")
-            .send_string(xml)
-        {
-            Ok(resp) => {
-                let status = resp.status();
-                let body = resp.into_string().map_err(|e| e.to_string())?;
-                Ok((status, body))
-            }
-            Err(ureq::Error::Status(status, resp)) => {
-                Ok((status, resp.into_string().unwrap_or_default()))
-            }
-            Err(e) => Err(e.to_string()),
-        }
+        let mut resp = ureq::post(&url)
+            .config()
+            .http_status_as_error(false)
+            .build()
+            .header("content-type", "application/xml")
+            .send(xml)
+            .map_err(|e| e.to_string())?;
+        let status = resp.status().as_u16();
+        let body = resp.body_mut().read_to_string().unwrap_or_default();
+        Ok((status, body))
     }
 
     fn pacs008(&self, reference: &str, amount_cents: u64) -> String {

@@ -1898,7 +1898,7 @@ fn aba_checksum_ok(digits: &str) -> bool {
         .zip(WEIGHTS)
         .map(|(b, w)| (b - b'0') as u32 * w)
         .sum();
-    sum % 10 == 0
+    sum.is_multiple_of(10)
 }
 
 /// UUIDv4Identifier pattern from the schema:

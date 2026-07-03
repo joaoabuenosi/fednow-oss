@@ -60,26 +60,25 @@ impl HttpSimPort {
 
     fn post(&self, xml: &str) -> Result<SubmitOutcome, PortError> {
         let url = format!("{}/fednow/messages", self.base_url);
-        match ureq::post(&url)
-            .set("content-type", "application/xml")
-            .send_string(xml)
-        {
-            Ok(resp) => {
-                let status = resp.status();
-                let body = resp
-                    .into_string()
-                    .map_err(|e| PortError::Transport(e.to_string()))?;
-                if status == 202 {
-                    Ok(SubmitOutcome::Accepted)
-                } else {
-                    Ok(SubmitOutcome::Advice(body))
-                }
-            }
-            Err(ureq::Error::Status(status, resp)) => Err(PortError::Rejected {
-                status,
-                body: resp.into_string().unwrap_or_default(),
-            }),
-            Err(e) => Err(PortError::Transport(e.to_string())),
+        let mut resp = ureq::post(&url)
+            .config()
+            .http_status_as_error(false)
+            .build()
+            .header("content-type", "application/xml")
+            .send(xml)
+            .map_err(|e| PortError::Transport(e.to_string()))?;
+        let status = resp.status().as_u16();
+        let body = resp
+            .body_mut()
+            .read_to_string()
+            .map_err(|e| PortError::Transport(e.to_string()))?;
+        if status >= 400 {
+            return Err(PortError::Rejected { status, body });
+        }
+        if status == 202 {
+            Ok(SubmitOutcome::Accepted)
+        } else {
+            Ok(SubmitOutcome::Advice(body))
         }
     }
 }
@@ -123,18 +122,22 @@ impl MqSimPort {
             "{}/mq/participants/{}/send",
             self.base_url, self.participant_routing_number
         );
-        match ureq::post(&url)
-            .set("content-type", "application/xml")
-            .send_string(envelope_xml)
-        {
-            // MQ semantics: a successful PUT never carries an advice.
-            Ok(_) => Ok(SubmitOutcome::Accepted),
-            Err(ureq::Error::Status(status, resp)) => Err(PortError::Rejected {
+        let mut resp = ureq::post(&url)
+            .config()
+            .http_status_as_error(false)
+            .build()
+            .header("content-type", "application/xml")
+            .send(envelope_xml)
+            .map_err(|e| PortError::Transport(e.to_string()))?;
+        let status = resp.status().as_u16();
+        if status >= 400 {
+            return Err(PortError::Rejected {
                 status,
-                body: resp.into_string().unwrap_or_default(),
-            }),
-            Err(e) => Err(PortError::Transport(e.to_string())),
+                body: resp.body_mut().read_to_string().unwrap_or_default(),
+            });
         }
+        // MQ semantics: a successful PUT never carries an advice.
+        Ok(SubmitOutcome::Accepted)
     }
 
     /// Wrap a business document in a `FedNowIncoming` envelope. The BAH
@@ -200,18 +203,26 @@ impl FedNowPort for MqSimPort {
             "{}/mq/participants/{}/receive",
             self.base_url, self.participant_routing_number
         );
-        match ureq::get(&url).call() {
-            Ok(resp) if resp.status() == 204 => Ok(None),
-            Ok(resp) => resp
-                .into_string()
-                .map(Some)
-                .map_err(|e| PortError::Transport(e.to_string())),
-            Err(ureq::Error::Status(status, resp)) => Err(PortError::Rejected {
-                status,
-                body: resp.into_string().unwrap_or_default(),
-            }),
-            Err(e) => Err(PortError::Transport(e.to_string())),
+        let mut resp = ureq::get(&url)
+            .config()
+            .http_status_as_error(false)
+            .build()
+            .call()
+            .map_err(|e| PortError::Transport(e.to_string()))?;
+        let status = resp.status().as_u16();
+        if status == 204 {
+            return Ok(None);
         }
+        if status >= 400 {
+            return Err(PortError::Rejected {
+                status,
+                body: resp.body_mut().read_to_string().unwrap_or_default(),
+            });
+        }
+        resp.body_mut()
+            .read_to_string()
+            .map(Some)
+            .map_err(|e| PortError::Transport(e.to_string()))
     }
 }
 
