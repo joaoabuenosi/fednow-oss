@@ -44,3 +44,7 @@ jobs:
         run: xmllint --noout --schema core/schemas/pacs.028.001.03.xsd core/tests/fixtures/pacs028_valid*.xml
       - name: pacs.004 fixtures
         run: xmllint --noout --schema core/schemas/pacs.004.001.10.xsd core/tests/fixtures/pacs004_valid*.xml
+      - name: camt.056 fixtures
+        run: xmllint --noout --schema core/schemas/camt.056.001.08.xsd core/tests/fixtures/camt056_valid*.xml
+      - name: camt.029 fixtures
+        run: xmllint --noout --schema core/schemas/camt.029.001.09.xsd core/tests/fixtures/camt029_valid*.xml

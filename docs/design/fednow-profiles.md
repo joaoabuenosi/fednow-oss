@@ -87,6 +87,27 @@ validate clean for their direction with fednow-core.
 (USABA + routing). Usage: query only for current/prior calendar day, and not
 before the presumed timeout of the original instruction.
 
+## pacs.004.001.10 (payment return) — calibrated against the guideline export
+
+`GrpHdr`: FedNow message id, `NbOfTxs` fixed `1`, CLRG/`FDN`. Single `TxInf`
+with mandatory: `OrgnlGrpInf` (incl. `OrgnlCreDtTm`), **`OrgnlIntrBkSttlmAmt`**,
+**`OrgnlIntrBkSttlmDt`**, `RtrdIntrBkSttlmAmt`, `IntrBkSttlmDt`, `ChrgBr`
+(SLEV only), `InstgAgt`/`InstdAgt` (USABA), **`RtrChain`** (return-movement
+parties), **`RtrRsnInf`** (exactly one, `Rsn/Cd` only — no proprietary),
+**`OrgnlTxRef`** (with `PmtTpInf`).
+
+## camt.056.001.08 (return request) / camt.029.001.09 (response)
+
+Both carry a **`CaseAssignment`**: `Id` in the FedNow message id shape,
+`Assgnr`/`Assgne` as agents (USABA + routing number), `CreDtTm`. camt.056:
+mandatory `Case`, single `TxInf` with mandatory `OrgnlGrpInf`,
+`OrgnlIntrBkSttlmAmt`/`Dt` and a `CxlRsnInf` (`Rsn/Cd` only; assignment id
+unique per calendar day per the guideline). camt.029: mandatory `RslvdCase`
+and `Sts/Conf` restricted to **IPAY / RJCR / PDCR / PECR**; a rejection
+(`RJCR`) must carry a status reason; resolution-related information
+accompanies IPAY/PECR. BAH `MktPrctc/Id` for camt.029 uses the 3-letter
+contexts (`rrr`/`irr`/`rcr`).
+
 ## Open items
 
 - Exact `LclInstrm`/`CtgyPurp` code values (FedNow code list).

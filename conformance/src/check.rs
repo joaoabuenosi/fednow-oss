@@ -1,10 +1,10 @@
 //! Judge one message against the FedNow Release 1 profiles.
 
 use fednow_core::validate::{
-    validate_head001, validate_pacs002_direction, validate_pacs004, validate_pacs008,
-    validate_pacs028, Pacs002Direction, ValidationIssue,
+    validate_camt029, validate_camt056, validate_head001, validate_pacs002_direction,
+    validate_pacs004, validate_pacs008, validate_pacs028, Pacs002Direction, ValidationIssue,
 };
-use fednow_core::{head001, pacs002, pacs004, pacs008, pacs028};
+use fednow_core::{camt029, camt056, head001, pacs002, pacs004, pacs008, pacs028};
 
 /// Which FedNow direction a pacs.002 must be judged against.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,6 +77,18 @@ pub fn check(xml: &str, direction: Direction) -> Result<Verdict, CheckError> {
         return Ok(Verdict {
             message_type: "pacs.004",
             issues: validate_pacs004(&pacs004::parse(xml)?),
+        });
+    }
+    if xml.contains(camt056::NAMESPACE) {
+        return Ok(Verdict {
+            message_type: "camt.056",
+            issues: validate_camt056(&camt056::parse(xml)?),
+        });
+    }
+    if xml.contains(camt029::NAMESPACE) {
+        return Ok(Verdict {
+            message_type: "camt.029",
+            issues: validate_camt029(&camt029::parse(xml)?),
         });
     }
     if xml.contains(head001::NAMESPACE) {
