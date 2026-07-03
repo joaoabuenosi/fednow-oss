@@ -25,6 +25,17 @@ progress without betting on unconfirmed details.
    a lax `xs:any`) is where ISO 20022 signatures travel by construction.
 5. mTLS on the transport and the message signature are **independent layers**;
    one does not replace the other.
+6. **Signing is point-to-point, not end-to-end** — each signature covers one
+   leg between a participant (or its service provider) and the service; the
+   receiving participant verifies the *service's* signature, not the sender's
+   ([Readiness Guide: Information Security](https://explore.fednow.org/resources/readiness-guide-information-security.pdf),
+   "Message Signing and Key Pairs").
+7. **The signer may be the FI, its service provider, or the service** — a
+   gateway signing on behalf of a participant is an arrangement the service
+   design explicitly anticipates (same source). The signing tools and
+   instructions (including key creation/management details) are distributed
+   **during onboarding** — confirming there is no self-service public channel
+   for the wire format.
 
 ## Operational model (FedNow Service Operating Procedures, §8 "Message Signing")
 
@@ -67,9 +78,15 @@ active key" lookup that fails closed.
 ## Not yet confirmed: the exact signature wire format
 
 The normative format (algorithms, what exactly is digested, envelope shape) lives
-in the **FedNow Service Technical Specifications** on SWIFT MyStandards — free
-account, but registration-gated, and its content must not be pasted into this repo
-without checking its redistribution terms.
+in the **FedNow Service Technical Specifications**. That document is *not* in the
+MyStandards usage-guideline collection (verified July 2026) and is not in the
+public FedNow Explorer resource library either: per the Information Security
+Readiness Guide, signing tools and instructions are distributed **during
+participant onboarding** (FedLine / frbservices.org, access-controlled). Tracked
+as issue #14; realistic acquisition paths are a design partner with legitimate
+access reporting interoperability facts, or contact through the FedNow Community
+channels. Its content must not be pasted into this repo regardless of how it is
+obtained.
 
 Two candidate shapes exist in the wild:
 
@@ -122,12 +139,12 @@ vendors only base ISO 20022 schemas.
    in `fednow-core`: `Fr`/`To` (routing numbers), `BizMsgIdr`, `MsgDefIdr`,
    `CreDt`, and `Sgntr` preserved as raw XML for round-tripping. Every later piece
    (simulator, gateway) needs the BAH regardless of the signing profile.
-2. **Now — action item (Joca):** create a free MyStandards account
-   ([step-by-step guide](https://explore.fednow.org/resources/technical-overview-guide.pdf)
-   references it; start at frbservices.org → FedNow ISO 20022 Readiness Portal) and
-   read the message-signing section of the Technical Specifications. We need:
-   signature envelope shape, canonicalization method, reference/digest structure,
-   and how the key id is expressed.
+2. **Done (July 2026):** MyStandards account created and the Release 1
+   usage-guideline collection fully mined (all Release 1 profiles calibrated).
+   The Technical Specifications are **not** distributed there — see issue #14
+   for the open acquisition paths. What we still need from it: signature
+   transport slot (MQ property vs technical header), protected header /
+   signing-input definition, and how the key id is expressed on the wire.
 2b. **Roadmap note:** MyStandards also lists a planned **"FedNow Service 2026
    Enhanced Messages Release" (Q4 2026)** — track it; message versions may move
    beyond the 2019 set this crate currently targets.
