@@ -12,8 +12,8 @@ authors.workspace = true
 fednow-core = { path = "../core" }
 thiserror = { workspace = true }
 serde = { workspace = true }
-toml = "0.8"
-ureq = "2"
+toml = "1"
+ureq = "3"
 
 [dev-dependencies]
 fednow-sim = { path = "../simulator" }
