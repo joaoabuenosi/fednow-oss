@@ -5,6 +5,9 @@
 > ⚠️ **Early development (v0.2.0).** Not production-ready yet; pre-1.0 minor
 > versions may break APIs. See the [CHANGELOG](CHANGELOG.md) and issues/milestones.
 
+**→ [Quick Start](QUICKSTART.md): send your first FedNow payment in 5 minutes**
+(Docker + curl, no Rust required — settle, reject, and survive the timeout case).
+
 Most of the 1,500+ institutions on the FedNow network are receive-only: implementing the
 send side (ISO 20022 messaging, signing, timeout reconciliation, 24x7 operations) is
 expensive and complex. This monorepo is a reference toolchain to change that, aimed at
@@ -35,28 +38,11 @@ cargo test --workspace
 
 ## Try the whole loop
 
-One command (`docker compose up --build`), or two terminals: the simulator
-plays the FedNow Service, the gateway is your sending institution.
-
-```sh
-# terminal 1 — the FedNow Service (simulated)
-cargo run -p fednow-sim
-
-# terminal 2 — your gateway
-cargo run -p fednow-gateway
-
-# send a payment (amounts ending .33 simulate the hard case: no advice)
-curl -s -X POST http://localhost:8090/payments \
-  -H "content-type: application/json" -H "Idempotency-Key: demo-1" \
-  -d '{"reference":"DEMO0001","amount_cents":125000,
-       "debtor_name":"Jane","debtor_account":"123456789012",
-       "creditor_name":"John","creditor_account":"987654321000",
-       "creditor_agent_routing_number":"091000019","category_purpose":"CONS"}'
-# → {"state":"SETTLED", ...}  — a FedNow-profile pacs.008 went out, the
-#   pacs.002 advice came back, the state machine settled. Same Idempotency-Key
-#   again returns the same payment; timeouts resolve via pacs.028 in the
-#   background — never a blind resend.
-```
+`docker compose up --build`, then follow the **[Quick Start](QUICKSTART.md)** —
+five minutes, four curl commands, every output shown as actually produced:
+a payment that settles, one that is rejected with its ISO reason code, the
+timeout case resolving itself via pacs.028 (never a resend), and a
+profile-invalid message stopped before the wire with stable rule codes.
 
 ## Supported message types (target set)
 

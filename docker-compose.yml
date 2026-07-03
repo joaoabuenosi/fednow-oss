@@ -19,6 +19,9 @@ services:
       # messages wrapped in the FedNow technical envelope with a BAH.
       # "http" = synchronous dev mode.
       FEDNOW_GW_SOUTHBOUND: mq
+      # Snappy demo cadence (QUICKSTART.md timings assume this); production
+      # deployments tune the sweeper to their own volume.
+      FEDNOW_GW_SWEEP_SECS: 2
     ports:
       - "8090:8090"
     depends_on:
