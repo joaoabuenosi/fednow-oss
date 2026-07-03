@@ -4,10 +4,10 @@
 //! construction and validation) and the southbound port. Owns no clocks —
 //! `now_unix` and calendar dates come from the caller.
 //!
-//! Ordering note (v0): `Published` is recorded *before* the wire call, so an
-//! ambiguous transport failure leaves the payment in `ACK_PENDING`, where the
-//! reconciler resolves it with a pacs.028 — never a resend. A real outbox
-//! publisher replaces this seam later without changing the states.
+//! Uses the outbox pattern: the `Submitted` event and the wire message become
+//! durable in one transaction; [`PaymentService::publish_pending`] drains the
+//! outbox and records `Published` only after confirmed handoff. Ambiguous
+//! failures resolve via pacs.028 (the reconciler) — never a resend.
 
 use fednow_core::builder::{fednow_message_id, Pacs008Builder, Pacs028Builder};
 use fednow_core::validate::validate_pacs008;
@@ -135,28 +135,51 @@ impl<S: PaymentStore, P: FedNowPort> PaymentService<S, P> {
         let key = &req.idempotency_key;
         self.store
             .append(key, PaymentEvent::Validated { at_unix: now_unix })?;
+        // The outbox pattern's atomic step: the Submitted event and the wire
+        // message become durable together — either both or neither.
         self.store
-            .append(key, PaymentEvent::Submitted { at_unix: now_unix })?;
-        let mut payment = self
-            .store
-            .append(key, PaymentEvent::Published { at_unix: now_unix })?;
+            .submit_to_outbox(key, PaymentEvent::Submitted { at_unix: now_unix }, xml)?;
 
-        match self.port.submit(&xml) {
-            Ok(SubmitOutcome::Advice(advice_xml)) => {
-                if let Some(event) = advice_event(&advice_xml, now_unix) {
-                    payment = self.store.append(key, event)?;
+        // Drain inline for the synchronous UX; the sweeper retries anything
+        // a transport failure leaves behind.
+        self.publish_pending(now_unix);
+        self.store
+            .load(key)
+            .ok_or_else(|| ServiceError::UnknownPayment(key.clone()))
+    }
+
+    /// Publish outbox entries until empty or the transport fails.
+    ///
+    /// `Published` is recorded only after confirmed handoff — before that, a
+    /// crash or transport failure leaves the payment in `SUBMITTED` with its
+    /// outbox entry intact, and the next pass retries. A transport-level
+    /// rejection marks the entry consumed (retrying an actively refused
+    /// message is pointless); the payment stays visibly in `SUBMITTED` for
+    /// operators. Returns the number of entries published.
+    pub fn publish_pending(&self, now_unix: i64) -> usize {
+        let mut published = 0;
+        while let Some(entry) = self.store.next_unpublished() {
+            match self.port.submit(&entry.message_xml) {
+                Ok(outcome) => {
+                    self.store.mark_published(entry.id);
+                    let _ = self.store.append(
+                        &entry.idempotency_key,
+                        PaymentEvent::Published { at_unix: now_unix },
+                    );
+                    published += 1;
+                    if let SubmitOutcome::Advice(advice_xml) = outcome {
+                        if let Some(event) = advice_event(&advice_xml, now_unix) {
+                            let _ = self.store.append(&entry.idempotency_key, event);
+                        }
+                    }
                 }
-            }
-            // No advice yet, or ambiguous transport failure: AckPending is
-            // correct either way — the reconciler owns it from here.
-            Ok(SubmitOutcome::Accepted) | Err(PortError::Transport(_)) => {}
-            Err(PortError::Rejected { .. }) => {
-                // Transport-level reject: message never entered processing.
-                // Recorded as an advice-less pending for now; the reconciler's
-                // query will confirm the service has no record of it.
+                Err(PortError::Rejected { .. }) => {
+                    self.store.mark_published(entry.id);
+                }
+                Err(PortError::Transport(_)) => break,
             }
         }
-        Ok(payment)
+        published
     }
 
     /// Drive reconciliation for one payment: declare the timeout when due,

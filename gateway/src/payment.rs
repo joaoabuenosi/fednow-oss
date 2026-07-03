@@ -1,5 +1,6 @@
 //! The payment aggregate: immutable events, pure transitions, replayable state.
 
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// The lifecycle states of an outbound FedNow payment.
@@ -24,7 +25,7 @@ pub enum PaymentState {
 }
 
 /// Transaction statuses an advice can carry, as the gateway interprets them.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AdviceStatus {
     /// Interim: accepted by the receiving participant.
     Actc,
@@ -61,8 +62,9 @@ impl AdviceStatus {
 /// Immutable facts about one payment, in order of occurrence.
 ///
 /// Timestamps are caller-provided unix seconds — the domain never reads a
-/// clock, which keeps replay deterministic.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// clock, which keeps replay deterministic. Serialized as JSON by durable
+/// stores; the variant names are part of the storage format.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PaymentEvent {
     Created {
         idempotency_key: String,
