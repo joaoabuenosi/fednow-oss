@@ -20,6 +20,7 @@
 //! (REST/gRPC northbound, MQ southbound), durable storage and the outbox
 //! publisher arrive in later iterations on top of this core.
 
+pub mod http;
 pub mod payment;
 pub mod reconciler;
 pub mod service;

@@ -16,7 +16,7 @@ community banks, credit unions and service providers in the US.
 |---|---|---|---|
 | `fednow-core` | [`core/`](core/) | 🚧 in progress | ISO 20022 library: parsing, validation (XSD facets + FedNow profile rules), message construction and XMLDSig signing |
 | `fednow-sim` | [`simulator/`](simulator/) | 🚧 v0 (HTTP dev mode) | Local FedNow simulator: accepts pacs.008, replies pacs.002 advices under configurable accept/reject/ACWP/timeout scenarios — a preparation tool for the Fed's Customer Testing Program (CTP) |
-| `fednow-gateway` | [`gateway/`](gateway/) | 🚧 domain core | Production send middleware: per-payment state machine (event-sourced, idempotency-keyed) and pacs.028 reconciliation policy; ports, outbox publisher and durable storage next |
+| `fednow-gateway` | [`gateway/`](gateway/) | 🚧 v0 (REST + reconciler) | Production send middleware: event-sourced state machine, idempotency-keyed REST API, background pacs.028 reconciler; durable storage and the MQ adapter next |
 | `fednow-conformance` | [`conformance/`](conformance/) | 📋 planned | Conformance suite any implementation can run |
 
 ## Current milestone
@@ -29,6 +29,31 @@ blocked on the access-controlled Technical Specifications).
 
 ```sh
 cargo test --workspace
+```
+
+## Try the whole loop
+
+Two terminals: the simulator plays the FedNow Service, the gateway is your
+sending institution.
+
+```sh
+# terminal 1 — the FedNow Service (simulated)
+cargo run -p fednow-sim
+
+# terminal 2 — your gateway
+cargo run -p fednow-gateway
+
+# send a payment (amounts ending .33 simulate the hard case: no advice)
+curl -s -X POST http://localhost:8090/payments \
+  -H "content-type: application/json" -H "Idempotency-Key: demo-1" \
+  -d '{"reference":"DEMO0001","amount_cents":125000,
+       "debtor_name":"Jane","debtor_account":"123456789012",
+       "creditor_name":"John","creditor_account":"987654321000",
+       "creditor_agent_routing_number":"091000019","category_purpose":"CONS"}'
+# → {"state":"SETTLED", ...}  — a FedNow-profile pacs.008 went out, the
+#   pacs.002 advice came back, the state machine settled. Same Idempotency-Key
+#   again returns the same payment; timeouts resolve via pacs.028 in the
+#   background — never a blind resend.
 ```
 
 ## Supported message types (target set)

@@ -32,6 +32,8 @@ pub trait PaymentStore {
     ) -> Result<Payment, TransitionError>;
     /// Load a payment by idempotency key.
     fn load(&self, idempotency_key: &str) -> Option<Payment>;
+    /// All known idempotency keys (the reconciler sweeps them).
+    fn keys(&self) -> Vec<String>;
 }
 
 /// In-memory store: a mutexed map of event streams.
@@ -91,5 +93,9 @@ impl PaymentStore for InMemoryStore {
         let streams = self.streams.lock().unwrap();
         let stream = streams.get(idempotency_key)?;
         Payment::replay(stream.clone()).ok()
+    }
+
+    fn keys(&self) -> Vec<String> {
+        self.streams.lock().unwrap().keys().cloned().collect()
     }
 }
