@@ -1,0 +1,84 @@
+# Conformance vector corpus — FedNow Service Release 1 message profiles.
+#
+# Each vector is an ISO 20022 message and its expected verdict. `valid` is
+# universal (any implementation can assert it); `codes` are fednow-core's
+# stable rule identifiers for implementations that adopt the same taxonomy.
+# pacs.002 vectors carry the FedNow direction they must be judged against.
+
+[[vector]]
+file = "pacs008/valid.xml"
+valid = true
+
+[[vector]]
+file = "pacs008/bad-aba-checksum.xml"
+valid = false
+codes = ["fednow.aba.checksum"]
+
+[[vector]]
+file = "pacs008/non-usd.xml"
+valid = false
+codes = ["fednow.ccy.usd"]
+
+[[vector]]
+file = "pacs008/missing-category-purpose.xml"
+valid = false
+codes = ["fednow.pmttpinf.ctgypurp"]
+
+[[vector]]
+file = "pacs008/non-fednow-msgid.xml"
+valid = false
+codes = ["fednow.msgid.format"]
+
+[[vector]]
+file = "pacs002/service-advice-settled.xml"
+direction = "service"
+valid = true
+
+[[vector]]
+file = "pacs002/participant-reject.xml"
+direction = "participant"
+valid = true
+
+[[vector]]
+file = "pacs002/unknown-status.xml"
+direction = "service"
+valid = false
+codes = ["fednow.txsts.known"]
+
+[[vector]]
+file = "pacs002/reject-without-reason.xml"
+direction = "participant"
+valid = false
+codes = ["fednow.rjct.reason"]
+
+[[vector]]
+file = "pacs028/valid.xml"
+valid = true
+
+[[vector]]
+file = "pacs028/missing-original.xml"
+valid = false
+codes = ["fednow.orgnlgrpinf.required"]
+
+[[vector]]
+file = "pacs004/valid.xml"
+valid = true
+
+[[vector]]
+file = "pacs004/missing-return-reason.xml"
+valid = false
+codes = ["fednow.rtrrsn.required"]
+
+[[vector]]
+file = "head001/valid.xml"
+valid = true
+
+[[vector]]
+file = "head001/sgntr-out-of-band.xml"
+valid = false
+codes = ["fednow.sgntr.outofband"]
+
+[[vector]]
+file = "head001/wrong-to-party.xml"
+valid = false
+codes = ["fednow.to.service"]

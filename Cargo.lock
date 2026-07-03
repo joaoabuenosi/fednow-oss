@@ -172,7 +172,14 @@ dependencies = [
 name = "fednow-conformance"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "fednow-core",
+ "fednow-sim",
+ "serde",
+ "thiserror",
+ "tokio",
+ "toml",
+ "ureq",
 ]
 
 [[package]]

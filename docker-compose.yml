@@ -1,0 +1,21 @@
+# The whole loop in one command:
+#   docker compose up --build
+# then POST a payment to the gateway (see README "Try the whole loop").
+services:
+  fednow-sim:
+    build:
+      context: .
+      dockerfile: simulator/Dockerfile
+    ports:
+      - "8080:8080"
+
+  fednow-gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    environment:
+      FEDNOW_GW_SIM_URL: http://fednow-sim:8080
+    ports:
+      - "8090:8090"
+    depends_on:
+      - fednow-sim
