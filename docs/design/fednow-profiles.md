@@ -15,12 +15,25 @@ implement and never reproduces guideline content — see the licensing note in
 | Message name identifier | `aaaa.nnn.001.nn` (variant fixed at 001) |
 | Market practice id (BAH `MktPrctc/Id`) | `frb.fednow.01` or `frb.fednow.<3 lowercase>.01` |
 
-## head.001.001.02 (BAH) — implemented in PR #7
+## head.001.001.02 (BAH)
 
 Removed: `CharSet`, `PssblDplct`, `Prty`, **`Sgntr`** (signature is out-of-band).
 Mandatory: `MktPrctc` (fixed registry URL + FedNow id). `Fr`/`To`: `FIId` only,
 `ClrSysMmbId` with `MmbId` only (no `ClrSysId`). `CpyDplct`: `DUPL` only.
-`Rltd` max 1. `CreDt` normalised to UTC.
+`Rltd` max 1.
+
+From the guideline PDF (textual rules):
+- **FedNow Service application identifier: `021150706`.** Participant-sent
+  messages carry it in `To` (and the service uses it in `Fr`; `To` may be
+  `PINGREPLY` in admi.011 ping responses).
+- **Service-only elements** (must not be sent by participants): `BizPrcgDt`,
+  `CpyDplct` (retrieved-message deliveries), `Rltd` (retrieval responses).
+- **`BizSvc` must not be used in Release 1** (no codes defined).
+- **`CreDt`**: UTC or local time with UTC offset — a timezone is required, but
+  `Z` is not (the earlier UTC-only reading was too strict).
+- **`MktPrctc/Id` must match the enclosed message**: `frb.fednow.01` for all,
+  except camt.029.001.09 (`rrr`/`irr`/`rcr`) and camt.052.001.08
+  (`aat`/`aad`/`aba`).
 
 ## pacs.008.001.08 (customer credit transfer, participant → service)
 

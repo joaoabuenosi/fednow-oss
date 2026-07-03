@@ -166,12 +166,79 @@ fn market_practice_id_pattern_is_enforced() {
 }
 
 #[test]
-fn non_utc_creation_date_is_flagged() {
+fn creation_date_with_utc_offset_is_accepted() {
+    // CreationDateRule allows UTC or local time with a UTC offset.
     let xml = VALID.replace(
         "<CreDt>2026-07-02T15:30:00Z</CreDt>",
         "<CreDt>2026-07-02T10:30:00-05:00</CreDt>",
     );
-    assert!(codes(&xml).contains(&"iso.credt.utc"));
+    let hdr = head001::parse(&xml).unwrap();
+    let issues = validate_head001(&hdr);
+    assert!(issues.is_empty(), "offset must be accepted: {issues:#?}");
+}
+
+#[test]
+fn creation_date_without_timezone_is_flagged() {
+    let xml = VALID.replace(
+        "<CreDt>2026-07-02T15:30:00Z</CreDt>",
+        "<CreDt>2026-07-02T15:30:00</CreDt>",
+    );
+    let hdr = head001::parse(&xml).unwrap();
+    let issues = validate_head001(&hdr);
+    let issue = issues
+        .iter()
+        .find(|i| i.code == "fednow.credt.timezone")
+        .expect("must flag timezone-less CreDt");
+    assert_eq!(issue.source, RuleSource::FedNowProfile);
+}
+
+#[test]
+fn to_party_must_address_the_service_application() {
+    let xml = VALID.replace("<MmbId>021150706</MmbId>", "<MmbId>091000019</MmbId>");
+    assert!(codes(&xml).contains(&"fednow.to.service"));
+}
+
+#[test]
+fn business_service_must_not_be_used_in_release_1() {
+    let xml = VALID.replace(
+        "<MsgDefIdr>pacs.008.001.08</MsgDefIdr>",
+        "<MsgDefIdr>pacs.008.001.08</MsgDefIdr>\n  <BizSvc>SOMESVC</BizSvc>",
+    );
+    assert!(codes(&xml).contains(&"fednow.bizsvc.absent"));
+}
+
+#[test]
+fn business_processing_date_is_service_only() {
+    let xml = VALID.replace(
+        "<CreDt>2026-07-02T15:30:00Z</CreDt>",
+        "<CreDt>2026-07-02T15:30:00Z</CreDt>\n  <BizPrcgDt>2026-07-02T15:31:00Z</BizPrcgDt>",
+    );
+    assert!(codes(&xml).contains(&"fednow.bizprcgdt.serviceonly"));
+}
+
+#[test]
+fn copy_duplicate_from_participant_is_flagged_as_service_only() {
+    let xml = VALID.replace(
+        "<CreDt>2026-07-02T15:30:00Z</CreDt>",
+        "<CreDt>2026-07-02T15:30:00Z</CreDt>\n  <CpyDplct>DUPL</CpyDplct>",
+    );
+    assert!(codes(&xml).contains(&"fednow.cpydplct.serviceonly"));
+}
+
+#[test]
+fn market_practice_id_must_match_the_enclosed_message() {
+    // rrr belongs to camt.029, not pacs.008.
+    let xml = VALID.replace("<Id>frb.fednow.01</Id>", "<Id>frb.fednow.rrr.01</Id>");
+    assert!(codes(&xml).contains(&"fednow.mktprctc.match"));
+
+    // And with a camt.029 message it is the expected value.
+    let xml = VALID
+        .replace(
+            "<MsgDefIdr>pacs.008.001.08</MsgDefIdr>",
+            "<MsgDefIdr>camt.029.001.09</MsgDefIdr>",
+        )
+        .replace("<Id>frb.fednow.01</Id>", "<Id>frb.fednow.rrr.01</Id>");
+    assert!(!codes(&xml).contains(&"fednow.mktprctc.match"));
 }
 
 #[test]
