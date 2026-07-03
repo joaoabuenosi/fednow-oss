@@ -84,6 +84,12 @@ pub struct PaymentTransaction {
     pub original_end_to_end_identification: Option<String>,
     #[serde(rename = "OrgnlUETR")]
     pub original_uetr: Option<String>,
+    /// Mandatory in the FedNow profile: the amount of the original transfer.
+    #[serde(rename = "OrgnlIntrBkSttlmAmt")]
+    pub original_interbank_settlement_amount: Option<ActiveCurrencyAndAmount>,
+    /// Mandatory in the FedNow profile: the settlement date of the original.
+    #[serde(rename = "OrgnlIntrBkSttlmDt")]
+    pub original_interbank_settlement_date: Option<String>,
     #[serde(rename = "RtrdIntrBkSttlmAmt")]
     pub returned_interbank_settlement_amount: ActiveCurrencyAndAmount,
     #[serde(rename = "IntrBkSttlmDt")]
@@ -94,9 +100,25 @@ pub struct PaymentTransaction {
     pub instructing_agent: Option<BranchAndFinancialInstitutionIdentification>,
     #[serde(rename = "InstdAgt")]
     pub instructed_agent: Option<BranchAndFinancialInstitutionIdentification>,
+    /// Mandatory in the FedNow profile: the return chain (debtor/creditor of
+    /// the *return* movement). Modeled as a presence marker for now.
+    #[serde(rename = "RtrChain")]
+    pub return_chain: Option<ReturnChain>,
     #[serde(rename = "RtrRsnInf", default)]
     pub return_reason_information: Vec<ReturnReasonInformation>,
+    /// Mandatory in the FedNow profile: references of the original transaction
+    /// (payment type information etc.). Presence marker.
+    #[serde(rename = "OrgnlTxRef")]
+    pub original_transaction_reference: Option<OriginalTransactionReference>,
 }
+
+/// `<RtrChain>` — presence marker (parties of the return movement).
+#[derive(Debug, Clone, Deserialize)]
+pub struct ReturnChain {}
+
+/// `<OrgnlTxRef>` — presence marker.
+#[derive(Debug, Clone, Deserialize)]
+pub struct OriginalTransactionReference {}
 
 /// `<RtrRsnInf>` — why the payment is being returned.
 #[derive(Debug, Clone, Deserialize)]

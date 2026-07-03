@@ -13,7 +13,7 @@
 //! All issues are collected; nothing short-circuits.
 
 use crate::pacs008::{ActiveCurrencyAndAmount, CreditTransferTransaction, Document, NAMESPACE};
-use crate::{head001, pacs002, pacs004, pacs028};
+use crate::{camt029, camt056, head001, pacs002, pacs004, pacs028};
 
 /// Where a validation requirement comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -703,9 +703,318 @@ pub fn validate_pacs004(doc: &pacs004::Document) -> Vec<ValidationIssue> {
                 RuleSource::FedNowProfile,
             ));
         }
+        if tx.return_reason_information.len() > 1 {
+            issues.push(ValidationIssue::new(
+                "fednow.rtrrsninf.one",
+                format!("{base}/RtrRsnInf"),
+                "the FedNow profile carries exactly one RtrRsnInf".to_string(),
+                RuleSource::FedNowProfile,
+            ));
+        }
+        if tx
+            .return_reason_information
+            .iter()
+            .any(|r| r.reason.as_ref().is_some_and(|x| x.proprietary.is_some()))
+        {
+            // ReturnReason5Choice in the FedNow profile is Cd-only.
+            issues.push(ValidationIssue::new(
+                "fednow.rtrrsn.cd",
+                format!("{base}/RtrRsnInf/Rsn"),
+                "return reasons use external codes only (Rsn/Cd, no Prtry)".to_string(),
+                RuleSource::FedNowProfile,
+            ));
+        }
+
+        // Profile-mandatory elements beyond the base schema.
+        for (present, code, tag) in [
+            (
+                tx.original_interbank_settlement_amount.is_some(),
+                "fednow.orgnlamt.required",
+                "OrgnlIntrBkSttlmAmt",
+            ),
+            (
+                tx.original_interbank_settlement_date.is_some(),
+                "fednow.orgnlsttlmdt.required",
+                "OrgnlIntrBkSttlmDt",
+            ),
+            (
+                tx.interbank_settlement_date.is_some(),
+                "fednow.intrbksttlmdt.required",
+                "IntrBkSttlmDt",
+            ),
+            (
+                tx.return_chain.is_some(),
+                "fednow.rtrchain.required",
+                "RtrChain",
+            ),
+            (
+                tx.original_transaction_reference.is_some(),
+                "fednow.orgnltxref.required",
+                "OrgnlTxRef",
+            ),
+        ] {
+            if !present {
+                issues.push(ValidationIssue::new(
+                    code,
+                    format!("{base}/{tag}"),
+                    format!("the FedNow profile requires {tag}"),
+                    RuleSource::FedNowProfile,
+                ));
+            }
+        }
+        if let Some(amount) = &tx.original_interbank_settlement_amount {
+            validate_amount(&mut issues, &format!("{base}/OrgnlIntrBkSttlmAmt"), amount);
+        }
+        match tx.charge_bearer.as_deref() {
+            Some("SLEV") => {}
+            Some(other) => issues.push(ValidationIssue::new(
+                "fednow.chrgbr.slev",
+                format!("{base}/ChrgBr"),
+                format!("the FedNow profile fixes ChrgBr at SLEV, found '{other}'"),
+                RuleSource::FedNowProfile,
+            )),
+            None => issues.push(ValidationIssue::new(
+                "fednow.chrgbr.slev",
+                format!("{base}/ChrgBr"),
+                "the FedNow profile requires ChrgBr SLEV".to_string(),
+                RuleSource::FedNowProfile,
+            )),
+        }
     }
 
     issues
+}
+
+/// camt.029 confirmation codes used by the FedNow Release 1 profile.
+const FEDNOW_CONFIRMATIONS: [&str; 4] = ["IPAY", "RJCR", "PDCR", "PECR"];
+
+/// Validate a parsed camt.056 return request against the FedNow profile.
+pub fn validate_camt056(doc: &camt056::Document) -> Vec<ValidationIssue> {
+    let mut issues = Vec::new();
+
+    if doc.xmlns.as_deref() != Some(camt056::NAMESPACE) {
+        issues.push(ValidationIssue::new(
+            "xsd.namespace",
+            "Document",
+            format!(
+                "expected namespace {}, found {}",
+                camt056::NAMESPACE,
+                doc.xmlns.as_deref().unwrap_or("(none)")
+            ),
+            RuleSource::XsdFacet,
+        ));
+    }
+
+    let msg = &doc.cancellation_request;
+    validate_case_assignment(&mut issues, &msg.assignment);
+    if msg.case.is_none() {
+        issues.push(ValidationIssue::new(
+            "fednow.case.required",
+            "FIToFIPmtCxlReq/Case",
+            "the FedNow profile requires the Case block".to_string(),
+            RuleSource::FedNowProfile,
+        ));
+    }
+
+    let txs: Vec<&camt056::PaymentTransaction> = msg
+        .underlying
+        .iter()
+        .flat_map(|u| u.transaction_information.iter())
+        .collect();
+    if txs.len() != 1 {
+        issues.push(ValidationIssue::new(
+            "fednow.txinf.one",
+            "Undrlyg/TxInf",
+            format!("expected exactly one TxInf, found {}", txs.len()),
+            RuleSource::FedNowProfile,
+        ));
+    }
+    for (i, tx) in txs.iter().enumerate() {
+        let base = format!("Undrlyg/TxInf[{i}]");
+        validate_original_group_information(
+            &mut issues,
+            &base,
+            tx.original_group_information.as_ref(),
+        );
+        for (present, code, tag) in [
+            (
+                tx.original_interbank_settlement_amount.is_some(),
+                "fednow.orgnlamt.required",
+                "OrgnlIntrBkSttlmAmt",
+            ),
+            (
+                tx.original_interbank_settlement_date.is_some(),
+                "fednow.orgnlsttlmdt.required",
+                "OrgnlIntrBkSttlmDt",
+            ),
+        ] {
+            if !present {
+                issues.push(ValidationIssue::new(
+                    code,
+                    format!("{base}/{tag}"),
+                    format!("the FedNow profile requires {tag}"),
+                    RuleSource::FedNowProfile,
+                ));
+            }
+        }
+        if let Some(uetr) = &tx.original_uetr {
+            if !is_uetr(uetr) {
+                issues.push(ValidationIssue::new(
+                    "xsd.uetr.pattern",
+                    format!("{base}/OrgnlUETR"),
+                    format!("'{uetr}' is not a lowercase UUID v4"),
+                    RuleSource::XsdFacet,
+                ));
+            }
+        }
+        if !tx.cancellation_reason_information.iter().any(|r| {
+            r.reason
+                .as_ref()
+                .is_some_and(|x| x.code.is_some() || x.proprietary.is_some())
+        }) {
+            issues.push(ValidationIssue::new(
+                "fednow.cxlrsn.required",
+                format!("{base}/CxlRsnInf"),
+                "a return request must carry a cancellation reason".to_string(),
+                RuleSource::FedNowProfile,
+            ));
+        }
+        if tx
+            .cancellation_reason_information
+            .iter()
+            .any(|r| r.reason.as_ref().is_some_and(|x| x.proprietary.is_some()))
+        {
+            issues.push(ValidationIssue::new(
+                "fednow.cxlrsn.cd",
+                format!("{base}/CxlRsnInf/Rsn"),
+                "cancellation reasons use external codes only (Rsn/Cd, no Prtry)".to_string(),
+                RuleSource::FedNowProfile,
+            ));
+        }
+    }
+
+    issues
+}
+
+/// Validate a parsed camt.029 return request response against the FedNow profile.
+pub fn validate_camt029(doc: &camt029::Document) -> Vec<ValidationIssue> {
+    let mut issues = Vec::new();
+
+    if doc.xmlns.as_deref() != Some(camt029::NAMESPACE) {
+        issues.push(ValidationIssue::new(
+            "xsd.namespace",
+            "Document",
+            format!(
+                "expected namespace {}, found {}",
+                camt029::NAMESPACE,
+                doc.xmlns.as_deref().unwrap_or("(none)")
+            ),
+            RuleSource::XsdFacet,
+        ));
+    }
+
+    let msg = &doc.resolution;
+    validate_case_assignment(&mut issues, &msg.assignment);
+    if msg.resolved_case.is_none() {
+        issues.push(ValidationIssue::new(
+            "fednow.rslvdcase.required",
+            "RsltnOfInvstgtn/RslvdCase",
+            "the FedNow profile requires RslvdCase".to_string(),
+            RuleSource::FedNowProfile,
+        ));
+    }
+
+    let conf = msg.status.confirmation.as_deref();
+    match conf {
+        None => issues.push(ValidationIssue::new(
+            "fednow.conf.required",
+            "RsltnOfInvstgtn/Sts/Conf",
+            "the FedNow profile requires Sts/Conf".to_string(),
+            RuleSource::FedNowProfile,
+        )),
+        Some(c) if !FEDNOW_CONFIRMATIONS.contains(&c) => issues.push(ValidationIssue::new(
+            "fednow.conf.known",
+            "RsltnOfInvstgtn/Sts/Conf",
+            format!(
+                "'{c}' is not a FedNow confirmation ({})",
+                FEDNOW_CONFIRMATIONS.join(", ")
+            ),
+            RuleSource::FedNowProfile,
+        )),
+        Some(_) => {}
+    }
+
+    // A rejected return request must say why.
+    if conf == Some("RJCR") {
+        let has_reason = msg
+            .cancellation_details
+            .iter()
+            .flat_map(|d| d.transaction_information.iter())
+            .flat_map(|t| t.cancellation_status_reason_information.iter())
+            .any(|r| {
+                r.reason
+                    .as_ref()
+                    .is_some_and(|x| x.code.is_some() || x.proprietary.is_some())
+            });
+        if !has_reason {
+            issues.push(ValidationIssue::new(
+                "fednow.rjcr.reason",
+                "CxlDtls/TxInfAndSts/CxlStsRsnInf",
+                "a rejected return request (RJCR) must carry a status reason".to_string(),
+                RuleSource::FedNowProfile,
+            ));
+        }
+    }
+
+    issues
+}
+
+fn validate_case_assignment(
+    issues: &mut Vec<ValidationIssue>,
+    assignment: &camt056::CaseAssignment,
+) {
+    check_max35text(
+        issues,
+        "xsd.msgid.length",
+        "Assgnmt/Id",
+        &assignment.identification,
+    );
+    if !is_fednow_message_id(&assignment.identification) {
+        issues.push(ValidationIssue::new(
+            "fednow.msgid.format",
+            "Assgnmt/Id",
+            format!(
+                "'{}' is not a FedNow message id (CCYYMMDD + 9-char connection party id + 1..18-char reference)",
+                assignment.identification
+            ),
+            RuleSource::FedNowProfile,
+        ));
+    }
+    if !is_iso_date_time(&assignment.creation_date_time) {
+        issues.push(ValidationIssue::new(
+            "xsd.credttm.format",
+            "Assgnmt/CreDtTm",
+            format!(
+                "'{}' is not a valid ISO 8601 date-time",
+                assignment.creation_date_time
+            ),
+            RuleSource::XsdFacet,
+        ));
+    }
+    for (party, tag) in [
+        (&assignment.assigner, "Assgnr"),
+        (&assignment.assignee, "Assgne"),
+    ] {
+        match &party.agent {
+            None => issues.push(ValidationIssue::new(
+                "fednow.assignment.agent",
+                format!("Assgnmt/{tag}"),
+                format!("the FedNow profile identifies {tag} as an agent (Agt)"),
+                RuleSource::FedNowProfile,
+            )),
+            Some(a) => validate_frs_agent(issues, &format!("Assgnmt/{tag}/Agt"), a),
+        }
+    }
 }
 
 /// Validate a parsed pacs.028 payment status request against the FedNow profile.
