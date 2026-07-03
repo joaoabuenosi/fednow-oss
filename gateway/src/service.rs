@@ -239,6 +239,36 @@ impl<S: PaymentStore, P: FedNowPort> PaymentService<S, P> {
         Ok(Some(updated))
     }
 
+    /// Operational snapshot: what a 24x7 operator (or a probe) needs at a
+    /// glance. Linear over the store — fine at development scale; a
+    /// production store can answer from indexes behind the same trait.
+    pub fn summary(&self, now_unix: i64) -> OpsSummary {
+        let mut by_state: std::collections::BTreeMap<&'static str, usize> =
+            std::collections::BTreeMap::new();
+        let mut total = 0usize;
+        let mut oldest_unresolved_age_secs: Option<i64> = None;
+        for key in self.store.keys() {
+            let Some(p) = self.store.load(&key) else {
+                continue;
+            };
+            total += 1;
+            *by_state.entry(p.state.name()).or_insert(0) += 1;
+            if p.state == crate::payment::PaymentState::TimeoutUnresolved {
+                if let Some(published) = p.published_at_unix {
+                    let age = (now_unix - published).max(0);
+                    oldest_unresolved_age_secs =
+                        Some(oldest_unresolved_age_secs.map_or(age, |o| o.max(age)));
+                }
+            }
+        }
+        OpsSummary {
+            payments_total: total,
+            by_state,
+            outbox_pending: self.store.unpublished_count(),
+            oldest_unresolved_age_secs,
+        }
+    }
+
     fn find_by_message_identification(&self, message_identification: &str) -> Option<Payment> {
         // Linear over the key set: fine for the development stores; a
         // production store can grow an indexed lookup behind the same trait.
@@ -330,6 +360,20 @@ impl<S: PaymentStore, P: FedNowPort> PaymentService<S, P> {
         }
         errors
     }
+}
+
+/// Snapshot returned by [`PaymentService::summary`].
+#[derive(Debug, Clone)]
+pub struct OpsSummary {
+    pub payments_total: usize,
+    /// Counts keyed by state name (`SETTLED`, `TIMEOUT_UNRESOLVED`, …).
+    pub by_state: std::collections::BTreeMap<&'static str, usize>,
+    /// Outbox entries awaiting publication — growth means the transport is
+    /// down or refusing.
+    pub outbox_pending: usize,
+    /// Age of the longest-waiting `TIMEOUT_UNRESOLVED` payment, if any —
+    /// the number an operator pages on.
+    pub oldest_unresolved_age_secs: Option<i64>,
 }
 
 fn advice_event(advice_xml: &str, now_unix: i64) -> Option<PaymentEvent> {

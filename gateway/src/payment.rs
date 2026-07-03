@@ -24,6 +24,21 @@ pub enum PaymentState {
     TimeoutUnresolved,
 }
 
+impl PaymentState {
+    /// Wire/display name, as exposed by the REST API and ops views.
+    pub fn name(self) -> &'static str {
+        match self {
+            PaymentState::Created => "CREATED",
+            PaymentState::Validated => "VALIDATED",
+            PaymentState::Submitted => "SUBMITTED",
+            PaymentState::AckPending => "ACK_PENDING",
+            PaymentState::Settled => "SETTLED",
+            PaymentState::Rejected => "REJECTED",
+            PaymentState::TimeoutUnresolved => "TIMEOUT_UNRESOLVED",
+        }
+    }
+}
+
 /// Transaction statuses an advice can carry, as the gateway interprets them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AdviceStatus {

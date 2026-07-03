@@ -214,4 +214,15 @@ impl PaymentStore for SqliteStore {
             params![outbox_id],
         );
     }
+
+    fn unpublished_count(&self) -> usize {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT COUNT(*) FROM outbox WHERE published = 0",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|n| n.max(0) as usize)
+        .unwrap_or(0)
+    }
 }
