@@ -6,9 +6,29 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-Planned: MQ-compatible simulator/adapter interface, camt.056/camt.029
-(return request flow), message signing once the Technical Specifications wire
-format is obtained ([#14](https://github.com/joaoabuenosi/fednow-oss/issues/14)),
+### fednow-core
+
+- **camt.056.001.08** (return request) and **camt.029.001.09** (resolution of
+  investigation) modules with FedNow-profile validation; **pacs.004.001.10**
+  calibrated against the real Release 1 usage guideline.
+- **MQ technical envelope** (`envelope` module): byte-exact `split()`,
+  typed `parse()` and `build()` for `FedNowIncoming`/`FedNowOutgoing`
+  (AppHdr + Document under type-specific wrappers), plus
+  `validate_envelope()` cross-checks (wrapper↔Document, `MsgDefIdr`,
+  direction↔service party).
+- `Head001Builder` — FedNow-profile Business Application Header construction.
+
+### fednow-sim
+
+- **MQ mode**: `/mq/participants/{rtn}/send` (fire-and-forget PUT of a
+  `FedNowIncoming` envelope) + `/mq/participants/{rtn}/receive` (destructive
+  GET of the next `FedNowOutgoing`). All outcomes asynchronous — including
+  profile-validation rejections; ACWP follow-ups are pushed; timeouts leave
+  the queue empty until a pacs.028 replays the withheld advice.
+
+Planned: gateway MQ-style adapter, message signing once the Technical
+Specifications wire format is obtained
+([#14](https://github.com/joaoabuenosi/fednow-oss/issues/14)),
 release artifact signing (Sigstore), Java/Python SDKs, public benchmarks.
 
 ## [0.1.0] — 2026-07-03

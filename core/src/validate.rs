@@ -1548,7 +1548,7 @@ fn validate_connection_party_id(issues: &mut Vec<ValidationIssue>, path: String,
 }
 
 /// Fixed `MktPrctc/Regy` value in the FedNow profile.
-const FEDNOW_MARKET_PRACTICE_REGISTRY: &str =
+pub const FEDNOW_MARKET_PRACTICE_REGISTRY: &str =
     "www2.swift.com/mystandards/#/group/Federal_Reserve_Financial_Services/FedNow_Service";
 
 /// FedNow `MktPrctc/Id`: `frb.fednow.01` or `frb.fednow.<3 lowercase letters>.01`.

@@ -1,9 +1,17 @@
 //! fednow-sim — a local FedNow Service simulator.
 //!
-//! v0 speaks the HTTP dev mode described in the project requirements: POST a
-//! pacs.008 customer credit transfer and receive the pacs.002 advice the FedNow
-//! Service would send, under configurable scenarios. An MQ-compatible interface
-//! comes later; the scenario engine is shared between both.
+//! Two modes share one scenario engine:
+//!
+//! - **HTTP dev mode** (`POST /fednow/messages`): synchronous request/response
+//!   — a pacs.008 in, the pacs.002 advice out. Zero-setup, good for first
+//!   contact and quick tests.
+//! - **MQ mode** (`/mq/participants/{rtn}/send` + `/receive`): the semantics of
+//!   the real FedNow connection (IBM MQ queue pair). A send is fire-and-forget
+//!   (202, no advice in the response); advices arrive later as `FedNowOutgoing`
+//!   envelopes on the participant's receive queue. Messages travel wrapped in
+//!   the FedNow technical envelope (`FedNowIncoming`/`FedNowOutgoing`, see
+//!   `fednow_core::envelope`), with a Business Application Header — exactly the
+//!   asynchrony the gateway must survive in production.
 //!
 //! ## Scenario selection
 //!
@@ -30,19 +38,20 @@
 //! endpoint, which returns the withheld advice and reveals the truth. Blind
 //! resends would double-pay; the simulator exists to make that lesson cheap.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
 use axum::body::Bytes;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::Router;
 use chrono::{SecondsFormat, Utc};
-use fednow_core::builder::Pacs002Builder;
-use fednow_core::validate::{validate_pacs008, validate_pacs028};
-use fednow_core::{pacs008, pacs028, ValidationIssue};
+use fednow_core::builder::{Head001Builder, Pacs002Builder};
+use fednow_core::envelope::{self, Direction, EnvelopedDocument};
+use fednow_core::validate::{validate_envelope, validate_pacs008, validate_pacs028};
+use fednow_core::{pacs002, pacs008, pacs028, ValidationIssue};
 use serde::Deserialize;
 
 /// What the simulator should do with an accepted message.
@@ -160,6 +169,19 @@ pub fn decide(config: &SimConfig, doc: &pacs008::Document) -> Scenario {
 pub struct SimState {
     pub config: SimConfig,
     advices: Mutex<HashMap<String, Vec<String>>>,
+    /// MQ mode: per-participant receive queues of `FedNowOutgoing` envelopes.
+    queues: Mutex<HashMap<String, VecDeque<String>>>,
+}
+
+impl SimState {
+    fn enqueue(&self, participant: &str, envelope_xml: String) {
+        self.queues
+            .lock()
+            .unwrap()
+            .entry(participant.to_string())
+            .or_default()
+            .push_back(envelope_xml);
+    }
 }
 
 /// Build the HTTP router (exposed separately so tests drive it without a socket).
@@ -167,9 +189,12 @@ pub fn router(config: SimConfig) -> Router {
     Router::new()
         .route("/healthz", get(|| async { "ok" }))
         .route("/fednow/messages", post(handle_message))
+        .route("/mq/participants/{rtn}/send", post(handle_mq_send))
+        .route("/mq/participants/{rtn}/receive", get(handle_mq_receive))
         .with_state(Arc::new(SimState {
             config,
             advices: Mutex::new(HashMap::new()),
+            queues: Mutex::new(HashMap::new()),
         }))
 }
 
@@ -311,6 +336,249 @@ fn xml_ok(xml: String) -> Response {
         .into_response()
 }
 
+// ---------------------------------------------------------------------------
+// MQ mode: fire-and-forget send + per-participant receive queue.
+// ---------------------------------------------------------------------------
+
+/// `POST /mq/participants/{rtn}/send` — accept a `FedNowIncoming` envelope.
+///
+/// Fire-and-forget like an MQ PUT: on success the response is `202 Accepted`
+/// with no body, and any advice arrives later as a `FedNowOutgoing` envelope
+/// on the participant's receive queue — including rejections for
+/// profile-invalid messages. Only structurally broken input (not an envelope,
+/// unparseable Document) gets a synchronous 400; the real service would
+/// deliver an admi.002 message reject there, which the sim does not model yet.
+async fn handle_mq_send(
+    State(state): State<Arc<SimState>>,
+    Path(rtn): Path<String>,
+    body: Bytes,
+) -> Response {
+    let Ok(xml) = std::str::from_utf8(&body) else {
+        return (StatusCode::BAD_REQUEST, "body is not valid UTF-8").into_response();
+    };
+
+    let env = match envelope::parse(xml) {
+        Ok(e) => e,
+        Err(e) => return (StatusCode::BAD_REQUEST, format!("{e}")).into_response(),
+    };
+    if env.direction != Direction::Incoming {
+        return (
+            StatusCode::BAD_REQUEST,
+            "participants send FedNowIncoming envelopes",
+        )
+            .into_response();
+    }
+
+    match &env.document {
+        EnvelopedDocument::CustomerCreditTransfer(doc) => {
+            if doc
+                .fi_to_fi_customer_credit_transfer
+                .credit_transfer_transaction_information
+                .is_empty()
+            {
+                return (StatusCode::BAD_REQUEST, "no CdtTrfTxInf present").into_response();
+            }
+            let issues = validate_envelope(&env);
+            mq_process_credit_transfer(&state, &rtn, doc, &issues)
+        }
+        EnvelopedDocument::PaymentStatusRequest(doc) => {
+            mq_process_status_request(&state, &rtn, doc)
+        }
+        other => (
+            StatusCode::BAD_REQUEST,
+            format!(
+                "message type {} is not supported by the simulator's MQ mode yet",
+                other.message_name()
+            ),
+        )
+            .into_response(),
+    }
+}
+
+/// `GET /mq/participants/{rtn}/receive` — destructive get of the next queued
+/// `FedNowOutgoing` envelope (like an MQ GET); `204 No Content` when empty.
+async fn handle_mq_receive(
+    State(state): State<Arc<SimState>>,
+    Path(rtn): Path<String>,
+) -> Response {
+    let next = state
+        .queues
+        .lock()
+        .unwrap()
+        .get_mut(&rtn)
+        .and_then(|q| q.pop_front());
+    match next {
+        Some(envelope_xml) => xml_ok(envelope_xml),
+        None => StatusCode::NO_CONTENT.into_response(),
+    }
+}
+
+/// Scenario engine for a credit transfer arriving over MQ: same decisions as
+/// the HTTP mode, but every advice is enqueued instead of returned — and the
+/// ACWP follow-up can actually be *pushed*, no pacs.028 needed.
+fn mq_process_credit_transfer(
+    state: &Arc<SimState>,
+    rtn: &str,
+    doc: &pacs008::Document,
+    issues: &[ValidationIssue],
+) -> Response {
+    let scenario = if issues.is_empty() {
+        decide(&state.config, doc)
+    } else {
+        Scenario::RejectService("SIMV".to_string())
+    };
+
+    let final_scenario = match &scenario {
+        Scenario::Timeout | Scenario::Delay(_) => &Scenario::Settle,
+        Scenario::AcwpThen(_) => &Scenario::AcceptWithoutPosting,
+        s => s,
+    };
+    let advice = match advice_xml(doc, final_scenario, issues) {
+        Ok(xml) => xml,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+    };
+    let hdr = &doc.fi_to_fi_customer_credit_transfer.group_header;
+    let orig_msg_id = hdr.message_identification.clone();
+
+    // Ledger entry mirrors the HTTP mode so pacs.028 works identically.
+    let mut ledger_entry = vec![advice.clone()];
+    let follow_up = if let Scenario::AcwpThen(status) = &scenario {
+        match follow_up_advice_xml(doc, status) {
+            Ok(xml) => {
+                ledger_entry.push(xml.clone());
+                Some(xml)
+            }
+            Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+        }
+    } else {
+        None
+    };
+    state
+        .advices
+        .lock()
+        .unwrap()
+        .insert(orig_msg_id.clone(), ledger_entry);
+
+    let wrapped = wrap_advice(&advice, rtn, &advice_id(&orig_msg_id));
+    match scenario {
+        Scenario::Timeout => {} // no advice: the reconciler's case
+        Scenario::Delay(ms) => {
+            let state = Arc::clone(state);
+            let rtn = rtn.to_string();
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
+                state.enqueue(&rtn, wrapped);
+            });
+        }
+        Scenario::AcwpThen(_) => {
+            state.enqueue(rtn, wrapped);
+            // The receiving participant's status arrives shortly after — MQ
+            // mode can push it, unlike the HTTP dev mode.
+            let wrapped_follow_up = wrap_advice(
+                follow_up.as_deref().unwrap_or_default(),
+                rtn,
+                &follow_up_advice_id(&orig_msg_id),
+            );
+            let state = Arc::clone(state);
+            let rtn = rtn.to_string();
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                state.enqueue(&rtn, wrapped_follow_up);
+            });
+        }
+        _ => state.enqueue(rtn, wrapped),
+    }
+
+    StatusCode::ACCEPTED.into_response()
+}
+
+/// pacs.028 over MQ: enqueue the latest stored advice for the original
+/// message. Unknown payments are a synchronous 404 as a dev convenience (the
+/// real service answers asynchronously).
+fn mq_process_status_request(
+    state: &Arc<SimState>,
+    rtn: &str,
+    doc: &pacs028::Document,
+) -> Response {
+    let issues = validate_pacs028(doc);
+    if !issues.is_empty() {
+        let codes: Vec<&str> = issues.iter().map(|i| i.code).collect();
+        return (
+            StatusCode::BAD_REQUEST,
+            format!("invalid pacs.028: {}", codes.join(" ")),
+        )
+            .into_response();
+    }
+    let Some(orig_msg_id) = doc.fi_to_fi_payment_status_request.transaction_information[0]
+        .original_group_information
+        .as_ref()
+        .map(|o| o.original_message_identification.as_str())
+    else {
+        return (StatusCode::BAD_REQUEST, "missing OrgnlGrpInf").into_response();
+    };
+
+    let advice = state
+        .advices
+        .lock()
+        .unwrap()
+        .get(orig_msg_id)
+        .and_then(|v| v.last())
+        .cloned();
+    match advice {
+        Some(advice) => {
+            // Recover the advice's own MsgId for the BAH.
+            let biz_msg_idr = pacs002::parse(&advice)
+                .map(|d| {
+                    d.fi_to_fi_payment_status_report
+                        .group_header
+                        .message_identification
+                })
+                .unwrap_or_else(|_| advice_id(orig_msg_id));
+            state.enqueue(rtn, wrap_advice(&advice, rtn, &biz_msg_idr));
+            StatusCode::ACCEPTED.into_response()
+        }
+        None => (
+            StatusCode::NOT_FOUND,
+            format!("no payment known for original message id '{orig_msg_id}'"),
+        )
+            .into_response(),
+    }
+}
+
+/// Wrap a pacs.002 advice in a `FedNowOutgoing` envelope with a service BAH.
+fn wrap_advice(advice_xml: &str, to_rtn: &str, biz_msg_idr: &str) -> String {
+    let now_ts = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    let bah = Head001Builder::new(
+        "021150706",
+        to_rtn,
+        truncate(biz_msg_idr, 35),
+        "pacs.002.001.10",
+        now_ts,
+    )
+    .to_xml()
+    .expect("BAH serialization is infallible for valid inputs");
+    envelope::build(
+        Direction::Outgoing,
+        "FedNowPaymentStatus",
+        &bah,
+        strip_xml_declaration(advice_xml),
+        None,
+    )
+}
+
+/// Drop a leading `<?xml …?>` declaration: envelope children are embedded in
+/// a larger document and must not carry one.
+fn strip_xml_declaration(xml: &str) -> &str {
+    let trimmed = xml.trim_start();
+    match trimmed.strip_prefix("<?xml") {
+        Some(rest) => rest
+            .split_once("?>")
+            .map(|(_, tail)| tail.trim_start())
+            .unwrap_or(trimmed),
+        None => trimmed,
+    }
+}
+
 /// Build the pacs.002 service advice for an accepted-for-processing pacs.008.
 fn advice_xml(
     doc: &pacs008::Document,
@@ -327,8 +595,7 @@ fn advice_xml(
 
     // Service advice MsgId is free-form Max35Text; derive it from the original
     // so runs are traceable.
-    let orig_id = &hdr.message_identification;
-    let advice_id: String = format!("SIM{}", &orig_id[..orig_id.len().min(32)]);
+    let advice_id = advice_id(&hdr.message_identification);
 
     let status = match scenario {
         Scenario::Settle => "ACSC",
@@ -390,8 +657,7 @@ fn follow_up_advice_xml(doc: &pacs008::Document, status: &str) -> Result<String,
     let tx = &msg.credit_transfer_transaction_information[0];
 
     let now_ts = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
-    let orig_id = &hdr.message_identification;
-    let advice_id: String = format!("SIMF{}", &orig_id[..orig_id.len().min(31)]);
+    let advice_id = follow_up_advice_id(&hdr.message_identification);
 
     let mut builder = Pacs002Builder::new(
         advice_id,
@@ -414,6 +680,16 @@ fn follow_up_advice_xml(doc: &pacs008::Document, status: &str) -> Result<String,
         builder = builder.reason_code("AC04");
     }
     builder.to_xml().map_err(|e| e.to_string())
+}
+
+/// Advice MsgId derived from the original, traceable across a run.
+fn advice_id(orig_id: &str) -> String {
+    format!("SIM{}", &orig_id[..orig_id.len().min(32)])
+}
+
+/// Follow-up advice MsgId (post-ACWP status relay).
+fn follow_up_advice_id(orig_id: &str) -> String {
+    format!("SIMF{}", &orig_id[..orig_id.len().min(31)])
 }
 
 fn agent_rtn(
