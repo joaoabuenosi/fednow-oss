@@ -1,0 +1,21 @@
+# Weekly dependency PRs. Cargo updates are grouped so one PR bumps the
+# workspace's minor/patch drift instead of ten; GitHub Actions pins update
+# alongside. Majors stay individual PRs — those deserve a real review.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday

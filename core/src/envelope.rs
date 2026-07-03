@@ -166,7 +166,9 @@ pub fn split(xml: &str) -> Result<RawEnvelope<'_>, ParseError> {
                         };
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"xmlns" {
-                                if let Ok(v) = attr.unescape_value() {
+                                if let Ok(v) =
+                                    attr.normalized_value(quick_xml::XmlVersion::default())
+                                {
                                     // Borrow from the source text: find the value
                                     // inside the tag slice to keep a &str.
                                     let tag = &xml[pos_before..reader.buffer_position() as usize];
@@ -354,7 +356,9 @@ fn sniff_default_namespace(xml: &str) -> Option<&str> {
             Ok(Event::Start(e)) => {
                 for attr in e.attributes().flatten() {
                     if attr.key.as_ref() == b"xmlns" {
-                        let v = attr.unescape_value().ok()?;
+                        let v = attr
+                            .normalized_value(quick_xml::XmlVersion::default())
+                            .ok()?;
                         let tag = &xml[pos_before..reader.buffer_position() as usize];
                         let found = tag.find(v.as_ref())?;
                         return Some(&tag[found..found + v.len()]);
