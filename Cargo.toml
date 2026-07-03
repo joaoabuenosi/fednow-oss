@@ -12,6 +12,6 @@ authors = ["FedNow OSS contributors"]
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
-quick-xml = { version = "0.37", features = ["serialize"] }
+quick-xml = { version = "0.41", features = ["serialize"] }
 thiserror = "2"
 chrono = { version = "0.4", default-features = false, features = ["std"] }
