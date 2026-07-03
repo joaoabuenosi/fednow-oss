@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Planned: real IBM MQ transport (mTLS, signed envelopes), message signing once
+the Technical Specifications wire format is obtained
+([#14](https://github.com/joaoabuenosi/fednow-oss/issues/14)),
+release artifact signing (Sigstore), Java/Python SDKs, public benchmarks.
+
+## [0.2.0] — 2026-07-03
+
+MQ semantics end to end, the full returns message set, and supply-chain
+guardrails.
+
 ### fednow-core
 
 - **camt.056.001.08** (return request) and **camt.029.001.09** (resolution of
@@ -35,10 +45,20 @@ All notable changes to this project are documented here. The format follows
   machine from `FedNowOutgoing` advices (correlated by original message id).
   The docker-compose wiring now runs gateway↔sim over MQ semantics.
 
-Planned: real IBM MQ transport (mTLS, signed envelopes), message signing
-once the Technical Specifications wire format is obtained
-([#14](https://github.com/joaoabuenosi/fednow-oss/issues/14)),
-release artifact signing (Sigstore), Java/Python SDKs, public benchmarks.
+### fednow-conformance
+
+- Envelope vectors: the corpus (24 vectors) now asserts technical-envelope
+  handling — valid both directions, wrapper↔Document mismatch, `MsgDefIdr`
+  mismatch — next to the bare-Document vectors.
+
+### Project
+
+- **Supply-chain guardrails**: daily + lockfile-triggered `cargo audit`
+  workflow, weekly grouped Dependabot updates. The first audit run caught two
+  HIGH DoS advisories in quick-xml 0.37.5 (RUSTSEC-2026-0194/0195) —
+  upgraded to 0.41.0.
+- Handbook chapter 1: the credit transfer flow (pacs.008 → pacs.002).
+- `fednow-core` carries crates.io metadata and its own README.
 
 ## [0.1.0] — 2026-07-03
 

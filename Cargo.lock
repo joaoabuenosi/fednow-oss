@@ -200,7 +200,7 @@ checksum = "7360491ce676a36bf9bb3c56c1aa791658183a54d2744120f27285738d90465a"
 
 [[package]]
 name = "fednow-conformance"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "axum",
  "fednow-core",
@@ -214,7 +214,7 @@ dependencies = [
 
 [[package]]
 name = "fednow-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "quick-xml",
@@ -224,7 +224,7 @@ dependencies = [
 
 [[package]]
 name = "fednow-gateway"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "axum",
  "chrono",
@@ -242,7 +242,7 @@ dependencies = [
 
 [[package]]
 name = "fednow-sim"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "axum",
  "chrono",
