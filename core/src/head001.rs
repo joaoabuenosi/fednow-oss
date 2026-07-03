@@ -81,6 +81,9 @@ pub struct AppHdr {
     pub market_practice: Option<ImplementationSpecification>,
     #[serde(rename = "CreDt")]
     pub creation_date: String,
+    /// Service-delivered messages only; participants must not send it.
+    #[serde(rename = "BizPrcgDt")]
+    pub business_processing_date: Option<String>,
     #[serde(rename = "CpyDplct")]
     pub copy_duplicate: Option<String>,
     #[serde(rename = "PssblDplct")]
@@ -89,7 +92,15 @@ pub struct AppHdr {
     /// use [`sgntr_raw`] on the wire text to obtain the signature bytes.
     #[serde(rename = "Sgntr")]
     pub signature: Option<SignatureEnvelope>,
+    /// Related header(s); only present in messages the FedNow Service delivers
+    /// in response to retrieval/status requests. Content not modeled.
+    #[serde(rename = "Rltd", default)]
+    pub related: Vec<RelatedHeader>,
 }
+
+/// `<Rltd>` — presence marker (inner BAH content is skipped by the deserializer).
+#[derive(Debug, Clone, Deserialize)]
+pub struct RelatedHeader {}
 
 /// `<MktPrctc>` — implementation specification the message conforms to.
 #[derive(Debug, Clone, Deserialize)]

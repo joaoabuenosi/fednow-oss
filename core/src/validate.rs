@@ -749,23 +749,36 @@ pub fn validate_head001(hdr: &head001::AppHdr) -> Vec<ValidationIssue> {
         ));
     }
 
-    if !is_iso_date_time(&hdr.creation_date) {
+    // CreationDateRule: UTC or local time with UTC offset — a timezone is
+    // required either way (RFC 3339 parse implies one is present).
+    if chrono::DateTime::parse_from_rfc3339(&hdr.creation_date).is_err() {
+        if is_iso_date_time(&hdr.creation_date) {
+            issues.push(ValidationIssue::new(
+                "fednow.credt.timezone",
+                "AppHdr/CreDt",
+                format!(
+                    "CreDt must be UTC (Z) or local time with a UTC offset, found '{}'",
+                    hdr.creation_date
+                ),
+                RuleSource::FedNowProfile,
+            ));
+        } else {
+            issues.push(ValidationIssue::new(
+                "xsd.credt.format",
+                "AppHdr/CreDt",
+                format!("'{}' is not a valid ISO 8601 date-time", hdr.creation_date),
+                RuleSource::XsdFacet,
+            ));
+        }
+    }
+
+    if hdr.business_service.is_some() {
+        // BusinessServiceRule: no codes are defined in Release 1.
         issues.push(ValidationIssue::new(
-            "xsd.credt.format",
-            "AppHdr/CreDt",
-            format!("'{}' is not a valid ISO 8601 date-time", hdr.creation_date),
-            RuleSource::XsdFacet,
-        ));
-    } else if !(hdr.creation_date.ends_with('Z') || hdr.creation_date.ends_with("+00:00")) {
-        // The BAH usage guide defines CreDt as normalised to UTC.
-        issues.push(ValidationIssue::new(
-            "iso.credt.utc",
-            "AppHdr/CreDt",
-            format!(
-                "BAH creation date must be normalised to UTC (Z), found '{}'",
-                hdr.creation_date
-            ),
-            RuleSource::IsoRule,
+            "fednow.bizsvc.absent",
+            "AppHdr/BizSvc",
+            "BizSvc must not be used in FedNow Service Release 1 (no codes defined)".to_string(),
+            RuleSource::FedNowProfile,
         ));
     }
 
@@ -791,7 +804,107 @@ pub fn validate_head001(hdr: &head001::AppHdr) -> Vec<ValidationIssue> {
         validate_party44(&mut issues, tag, party);
     }
 
+    // Direction-dependent rules, keyed on the FedNow Service application
+    // identifier: participant-sent headers address the service, and the
+    // service-only elements must be absent.
+    let from_id = party_member_id(&hdr.from);
+    let to_id = party_member_id(&hdr.to);
+    if from_id != Some(FEDNOW_SERVICE_CONNECTION_PARTY) {
+        if to_id != Some(FEDNOW_SERVICE_CONNECTION_PARTY) {
+            issues.push(ValidationIssue::new(
+                "fednow.to.service",
+                "AppHdr/To",
+                format!(
+                    "participant-sent messages address the FedNow Service application \
+                     ({FEDNOW_SERVICE_CONNECTION_PARTY}) in To"
+                ),
+                RuleSource::FedNowProfile,
+            ));
+        }
+        if hdr.business_processing_date.is_some() {
+            issues.push(ValidationIssue::new(
+                "fednow.bizprcgdt.serviceonly",
+                "AppHdr/BizPrcgDt",
+                "BizPrcgDt is only present in service-delivered messages".to_string(),
+                RuleSource::FedNowProfile,
+            ));
+        }
+        if hdr.copy_duplicate.is_some() {
+            issues.push(ValidationIssue::new(
+                "fednow.cpydplct.serviceonly",
+                "AppHdr/CpyDplct",
+                "CpyDplct is only present when the service delivers a retrieved message"
+                    .to_string(),
+                RuleSource::FedNowProfile,
+            ));
+        }
+        if !hdr.related.is_empty() {
+            issues.push(ValidationIssue::new(
+                "fednow.rltd.serviceonly",
+                "AppHdr/Rltd",
+                "Rltd is only present in service-delivered retrieval responses".to_string(),
+                RuleSource::FedNowProfile,
+            ));
+        }
+    }
+    if hdr.related.len() > 1 {
+        issues.push(ValidationIssue::new(
+            "fednow.rltd.one",
+            "AppHdr/Rltd",
+            format!(
+                "the FedNow profile restricts Rltd to at most 1, found {}",
+                hdr.related.len()
+            ),
+            RuleSource::FedNowProfile,
+        ));
+    }
+
+    // MarketPracticeIdentificationRule: the id must match the enclosed message.
+    if let Some(mp) = &hdr.market_practice {
+        if is_fednow_market_practice_id(&mp.identification) {
+            let expected: &[&str] = match hdr.message_definition_identifier.as_str() {
+                "camt.029.001.09" => &[
+                    "frb.fednow.rrr.01",
+                    "frb.fednow.irr.01",
+                    "frb.fednow.rcr.01",
+                ],
+                "camt.052.001.08" => &[
+                    "frb.fednow.aat.01",
+                    "frb.fednow.aad.01",
+                    "frb.fednow.aba.01",
+                ],
+                _ => &["frb.fednow.01"],
+            };
+            if !expected.contains(&mp.identification.as_str()) {
+                issues.push(ValidationIssue::new(
+                    "fednow.mktprctc.match",
+                    "AppHdr/MktPrctc/Id",
+                    format!(
+                        "'{}' does not match the guideline for {} (expected one of: {})",
+                        mp.identification,
+                        hdr.message_definition_identifier,
+                        expected.join(", ")
+                    ),
+                    RuleSource::FedNowProfile,
+                ));
+            }
+        }
+    }
+
     issues
+}
+
+/// The FedNow Service application connection party identifier.
+const FEDNOW_SERVICE_CONNECTION_PARTY: &str = "021150706";
+
+fn party_member_id(party: &head001::Party44Choice) -> Option<&str> {
+    party
+        .financial_institution
+        .as_ref()?
+        .financial_institution_identification
+        .clearing_system_member_identification
+        .as_ref()
+        .map(|m| m.member_identification.as_str())
 }
 
 fn validate_party44(issues: &mut Vec<ValidationIssue>, tag: &str, party: &head001::Party44Choice) {
