@@ -6,10 +6,23 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-Planned: real IBM MQ transport (mTLS, signed envelopes), message signing once
-the Technical Specifications wire format is obtained
+- **QUICKSTART.md**: 5-minute Docker + curl walkthrough, every output
+  captured from a live run (settle, reject, timeout→pacs.028, 422 with rule
+  codes); compose pins a 2s sweeper so the documented timings hold.
+- **Python SDK** (`sdk/python/`, `fednow-gateway-client`): zero-dependency
+  client — idempotent `submit`, `wait_final` that keeps waiting through
+  `TIMEOUT_UNRESOLVED`, `ProfileViolation` with rule codes. Unit-tested
+  against a stub and integration-tested against the live gateway↔sim stack
+  (MQ mode) in CI.
+- Design doc for the real IBM MQ transport (`docs/design/mq-transport.md`):
+  MQI via the IBM redistributable client behind an `ibm-mq` feature flag.
+- Dependency majors consolidated: ureq 3 (adapter migration), rusqlite 0.40
+  (MSRV → 1.95), toml 1, checkout v7, gh-release v3.
+
+Planned: real IBM MQ transport implementation (phases in the design doc),
+message signing once the Technical Specifications wire format is obtained
 ([#14](https://github.com/joaoabuenosi/fednow-oss/issues/14)),
-release artifact signing (Sigstore), Java/Python SDKs, public benchmarks.
+release artifact signing (Sigstore), Java SDK, public benchmarks.
 
 ## [0.2.0] — 2026-07-03
 
