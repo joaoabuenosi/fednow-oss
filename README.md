@@ -15,14 +15,17 @@ community banks, credit unions and service providers in the US.
 | Crate | Directory | Status | What it is |
 |---|---|---|---|
 | `fednow-core` | [`core/`](core/) | 🚧 in progress | ISO 20022 library: parsing, validation (XSD facets + FedNow profile rules), message construction and XMLDSig signing |
-| `fednow-sim` | [`simulator/`](simulator/) | 📋 planned | Local FedNow simulator in Docker: accepts pacs.008, replies pacs.002, configurable accept/reject/timeout scenarios, RFP — a preparation tool for the Fed's Customer Testing Program (CTP) |
+| `fednow-sim` | [`simulator/`](simulator/) | 🚧 v0 (HTTP dev mode) | Local FedNow simulator: accepts pacs.008, replies pacs.002 advices under configurable accept/reject/ACWP/timeout scenarios — a preparation tool for the Fed's Customer Testing Program (CTP) |
 | `fednow-gateway` | [`gateway/`](gateway/) | 📋 planned | Production send middleware: hexagonal architecture, per-payment state machine, event sourcing, outbox pattern, pacs.028 reconciler |
 | `fednow-conformance` | [`conformance/`](conformance/) | 📋 planned | Conformance suite any implementation can run |
 
 ## Current milestone
 
-**M2 — `fednow-core` parses and validates pacs.002 (payment status report) and signs
-messages with XMLDSig.** (M1 — pacs.008 parse/validate with green CI — done.)
+**M3 — `fednow-sim` v0: local simulator with accept/reject/timeout scenarios.**
+Done: M1 (pacs.008 parse/validate); M2 (credit-transfer message set on the real
+FedNow profiles, calibrated against the official Release 1 samples — message
+signing is tracked in [#14](https://github.com/joaoabuenosi/fednow-oss/issues/14),
+blocked on the access-controlled Technical Specifications).
 
 ```sh
 cargo test --workspace

@@ -1,0 +1,9 @@
+# fednow-sim scenario configuration (optional).
+# Copy to fednow-sim.toml (or point FEDNOW_SIM_CONFIG at it).
+# Maps creditor-agent routing numbers to scenarios; config wins over the
+# built-in amount triggers (.11 reject / .22 accept-without-posting / .33 timeout).
+
+[scenarios]
+"091000019" = { action = "reject", reason = "AC04" }   # creditor account closed
+"999999992" = { action = "timeout" }                    # the reconciler's nightmare
+# actions: settle | accept-without-posting | reject (+ reason) | timeout

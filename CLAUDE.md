@@ -42,10 +42,13 @@ Contexto do autor: Joca — engenheiro de pagamentos BR, experiência Pix em pro
 - Commits e código em inglês; discussão com Joca pode ser em PT-BR.
 
 ## Milestone atual
-**M2: pacs.002 (status report) + assinatura XMLDSig no fednow-core.**
-Feito: M1 — pacs.008 parse/validate com CI verde (jul/2026).
-Depois: fednow-sim v0 (Docker) → cenários de timeout/pacs.028 → gateway v0 →
-guia "do zero ao CTP".
+**M3: fednow-sim v0 — simulador (HTTP dev mode + Docker) com cenários de
+aceite/rejeição/ACWP/timeout.**
+Feito: M1 — pacs.008 parse/validate (jul/2026); M2 — mensagens do fluxo de
+crédito nos perfis FedNow reais (pacs.008, pacs.002 dual, pacs.028, BAH),
+calibradas contra 81 samples oficiais. Assinatura pendente das Technical
+Specifications (doc restrito) — issue #14.
+Depois: cenários pacs.028 no sim → gateway v0 → guia "do zero ao CTP".
 
 Repo: https://github.com/joaoabuenosi/fednow-oss (conta pessoal; org fica p/
 quando houver mantenedores externos). Main protegida: PR + CI verde obrigatórios.
