@@ -52,6 +52,10 @@ pub enum Scenario {
     Settle,
     /// Advice `ACWP`: accepted without posting.
     AcceptWithoutPosting,
+    /// Advice `ACWP` now, with a follow-up status (`ACCC`, `BLCK` or `RJCT`)
+    /// queued in the ledger — CTP scenario 4's full arc. The follow-up is
+    /// retrieved with a pacs.028 (the HTTP dev mode cannot push).
+    AcwpThen(String),
     /// Advice `RJCT` with the given external reason code — a rejection by the
     /// receiving participant (CTP scenario 3), e.g. `AC04`.
     Reject(String),
@@ -82,6 +86,7 @@ struct RawScenario {
     action: String,
     reason: Option<String>,
     delay_ms: Option<u64>,
+    follow_up: Option<String>,
 }
 
 impl SimConfig {
@@ -98,7 +103,16 @@ impl SimConfig {
         for (rtn, s) in raw.scenarios {
             let scenario = match s.action.as_str() {
                 "settle" => Scenario::Settle,
-                "accept-without-posting" => Scenario::AcceptWithoutPosting,
+                "accept-without-posting" => match s.follow_up {
+                    Some(f) => {
+                        let f = f.to_uppercase();
+                        if !["ACCC", "BLCK", "RJCT", "PDNG"].contains(&f.as_str()) {
+                            return Err(format!("unknown follow_up '{f}' for RTN {rtn}"));
+                        }
+                        Scenario::AcwpThen(f)
+                    }
+                    None => Scenario::AcceptWithoutPosting,
+                },
                 "reject" => Scenario::Reject(s.reason.unwrap_or_else(|| "AC04".to_string())),
                 "reject-service" => {
                     Scenario::RejectService(s.reason.unwrap_or_else(|| "E990".to_string()))
@@ -135,16 +149,17 @@ pub fn decide(config: &SimConfig, doc: &pacs008::Document) -> Scenario {
         v if v.ends_with(".33") => Scenario::Timeout,
         v if v.ends_with(".44") => Scenario::Delay(2_000),
         v if v.ends_with(".55") => Scenario::RejectService("E990".to_string()),
+        v if v.ends_with(".66") => Scenario::AcwpThen("ACCC".to_string()),
         _ => Scenario::Settle,
     }
 }
 
 /// Shared simulator state: configuration plus the advice ledger — every
-/// processed payment's final advice, keyed by the original message id, so a
-/// pacs.028 can always answer "what happened to X?".
+/// advice each payment ever produced, in order, keyed by the original message
+/// id, so a pacs.028 can always answer "what happened to X?" with the latest.
 pub struct SimState {
     pub config: SimConfig,
-    advices: Mutex<HashMap<String, String>>,
+    advices: Mutex<HashMap<String, Vec<String>>>,
 }
 
 /// Build the HTTP router (exposed separately so tests drive it without a socket).
@@ -207,19 +222,32 @@ async fn handle_pacs008(state: &SimState, xml: &str) -> Response {
     // unadvised until a pacs.028 asks.
     let final_scenario = match &scenario {
         Scenario::Timeout | Scenario::Delay(_) => &Scenario::Settle,
+        Scenario::AcwpThen(_) => &Scenario::AcceptWithoutPosting,
         s => s,
     };
     let advice = match advice_xml(&doc, final_scenario, &issues) {
         Ok(xml) => xml,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
     };
-    state.advices.lock().unwrap().insert(
-        doc.fi_to_fi_customer_credit_transfer
-            .group_header
-            .message_identification
-            .clone(),
-        advice.clone(),
-    );
+    let orig_msg_id = doc
+        .fi_to_fi_customer_credit_transfer
+        .group_header
+        .message_identification
+        .clone();
+    let mut ledger_entry = vec![advice.clone()];
+    if let Scenario::AcwpThen(follow_up) = &scenario {
+        // The receiving participant's later status, relayed by the service —
+        // queued in the ledger, retrieved with a pacs.028.
+        match follow_up_advice_xml(&doc, follow_up) {
+            Ok(xml) => ledger_entry.push(xml),
+            Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+        }
+    }
+    state
+        .advices
+        .lock()
+        .unwrap()
+        .insert(orig_msg_id, ledger_entry);
 
     match scenario {
         Scenario::Timeout => StatusCode::ACCEPTED.into_response(),
@@ -258,7 +286,13 @@ fn handle_pacs028(state: &SimState, xml: &str) -> Response {
         return (StatusCode::BAD_REQUEST, "missing OrgnlGrpInf").into_response();
     };
 
-    match state.advices.lock().unwrap().get(orig_msg_id) {
+    match state
+        .advices
+        .lock()
+        .unwrap()
+        .get(orig_msg_id)
+        .and_then(|v| v.last())
+    {
         Some(advice) => xml_ok(advice.clone()),
         None => (
             StatusCode::NOT_FOUND,
@@ -300,7 +334,7 @@ fn advice_xml(
         Scenario::Settle => "ACSC",
         Scenario::AcceptWithoutPosting => "ACWP",
         Scenario::Reject(_) | Scenario::RejectService(_) => "RJCT",
-        Scenario::Timeout | Scenario::Delay(_) => {
+        Scenario::Timeout | Scenario::Delay(_) | Scenario::AcwpThen(_) => {
             unreachable!("mapped to a final scenario before advice building")
         }
     };
@@ -342,9 +376,43 @@ fn advice_xml(
         }
         Scenario::RejectService(code) => builder.reason_proprietary(code.clone()),
         Scenario::Reject(code) => builder.reason_code(code.clone()),
-        Scenario::Timeout | Scenario::Delay(_) => unreachable!(),
+        Scenario::Timeout | Scenario::Delay(_) | Scenario::AcwpThen(_) => unreachable!(),
     };
 
+    builder.to_xml().map_err(|e| e.to_string())
+}
+
+/// The receiving participant's follow-up status after an ACWP, relayed by the
+/// service (CTP scenario 4, steps 5–6).
+fn follow_up_advice_xml(doc: &pacs008::Document, status: &str) -> Result<String, String> {
+    let msg = &doc.fi_to_fi_customer_credit_transfer;
+    let hdr = &msg.group_header;
+    let tx = &msg.credit_transfer_transaction_information[0];
+
+    let now_ts = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    let orig_id = &hdr.message_identification;
+    let advice_id: String = format!("SIMF{}", &orig_id[..orig_id.len().min(31)]);
+
+    let mut builder = Pacs002Builder::new(
+        advice_id,
+        now_ts,
+        hdr.message_identification.clone(),
+        hdr.creation_date_time.clone(),
+        status,
+        agent_rtn(&tx.instructing_agent).unwrap_or("021150706"),
+        agent_rtn(&tx.instructed_agent).unwrap_or("021150706"),
+    )
+    .original_end_to_end_identification(
+        tx.payment_identification.end_to_end_identification.clone(),
+    );
+    if let Some(uetr) = &tx.payment_identification.uetr {
+        builder = builder.original_uetr(uetr.clone());
+    }
+    if status == "RJCT" {
+        // A post-ACWP rejection: funds already settled, a payment return
+        // (pacs.004) follows in the real flow.
+        builder = builder.reason_code("AC04");
+    }
     builder.to_xml().map_err(|e| e.to_string())
 }
 

@@ -313,6 +313,62 @@ async fn amount_ending_55_is_rejected_by_the_service_with_a_proprietary_reason()
 }
 
 #[tokio::test]
+async fn acwp_then_follow_up_is_revealed_by_pacs028() {
+    // CTP scenario 4's full arc: ACWP now, the participant's later ACCC
+    // confirmation is queued and retrieved with a status request.
+    let app = router(SimConfig::default());
+
+    let (status, body) = post_app(&app, valid_pacs008(125_066)).await;
+    assert_eq!(status, StatusCode::OK);
+    let first = parse_advice(&body);
+    assert_eq!(
+        first
+            .fi_to_fi_payment_status_report
+            .transaction_information_and_status[0]
+            .transaction_status
+            .as_deref(),
+        Some("ACWP")
+    );
+
+    let (status, body) = post_app(&app, pacs028_query("20260702021040078SIMTEST001")).await;
+    assert_eq!(status, StatusCode::OK);
+    let follow_up = parse_advice(&body);
+    assert_eq!(
+        follow_up
+            .fi_to_fi_payment_status_report
+            .transaction_information_and_status[0]
+            .transaction_status
+            .as_deref(),
+        Some("ACCC"),
+        "the follow-up confirms the funds were credited"
+    );
+}
+
+#[tokio::test]
+async fn configured_follow_up_blck_is_honored() {
+    let config = SimConfig::from_toml(
+        r#"
+[scenarios]
+"091000019" = { action = "accept-without-posting", follow_up = "blck" }
+"#,
+    )
+    .unwrap();
+    let app = router(config);
+    let (_, _) = post_app(&app, valid_pacs008(125_000)).await;
+    let (status, body) = post_app(&app, pacs028_query("20260702021040078SIMTEST001")).await;
+    assert_eq!(status, StatusCode::OK);
+    let advice = parse_advice(&body);
+    assert_eq!(
+        advice
+            .fi_to_fi_payment_status_report
+            .transaction_information_and_status[0]
+            .transaction_status
+            .as_deref(),
+        Some("BLCK")
+    );
+}
+
+#[tokio::test]
 async fn malformed_xml_is_a_400() {
     let (status, _) = post(SimConfig::default(), "<not-xml".to_string()).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
