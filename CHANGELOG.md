@@ -26,8 +26,17 @@ All notable changes to this project are documented here. The format follows
   profile-validation rejections; ACWP follow-ups are pushed; timeouts leave
   the queue empty until a pacs.028 replays the withheld advice.
 
-Planned: gateway MQ-style adapter, message signing once the Technical
-Specifications wire format is obtained
+### fednow-gateway
+
+- **MQ-style southbound adapter** (`MqSimPort`, `FEDNOW_GW_SOUTHBOUND=mq`):
+  sends wrap the business message in a `FedNowIncoming` envelope with a BAH
+  and are fire-and-forget; a `poll_advice` port method plus
+  `PaymentService::pump_advices` drain the receive queue and drive the state
+  machine from `FedNowOutgoing` advices (correlated by original message id).
+  The docker-compose wiring now runs gateway↔sim over MQ semantics.
+
+Planned: real IBM MQ transport (mTLS, signed envelopes), message signing
+once the Technical Specifications wire format is obtained
 ([#14](https://github.com/joaoabuenosi/fednow-oss/issues/14)),
 release artifact signing (Sigstore), Java/Python SDKs, public benchmarks.
 

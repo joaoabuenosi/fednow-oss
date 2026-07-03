@@ -15,6 +15,10 @@ services:
       dockerfile: gateway/Dockerfile
     environment:
       FEDNOW_GW_SIM_URL: http://fednow-sim:8080
+      # "mq" = production semantics: fire-and-forget sends + advice queue,
+      # messages wrapped in the FedNow technical envelope with a BAH.
+      # "http" = synchronous dev mode.
+      FEDNOW_GW_SOUTHBOUND: mq
     ports:
       - "8090:8090"
     depends_on:
