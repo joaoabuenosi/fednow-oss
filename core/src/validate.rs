@@ -13,7 +13,7 @@
 //! All issues are collected; nothing short-circuits.
 
 use crate::pacs008::{ActiveCurrencyAndAmount, CreditTransferTransaction, Document, NAMESPACE};
-use crate::{camt029, camt056, head001, pacs002, pacs004, pacs028};
+use crate::{camt029, camt056, envelope, head001, pacs002, pacs004, pacs028};
 
 /// Where a validation requirement comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1364,6 +1364,101 @@ pub fn validate_head001(hdr: &head001::AppHdr) -> Vec<ValidationIssue> {
                 ));
             }
         }
+    }
+
+    issues
+}
+
+/// Validate a parsed FedNow technical envelope: envelope-level rules, the
+/// BAH, the business document, and the cross-checks between them.
+///
+/// pacs.002 content is validated for the direction implied by the envelope
+/// (`FedNowIncoming` → participant-sent, `FedNowOutgoing` → service advice).
+pub fn validate_envelope(env: &envelope::Envelope) -> Vec<ValidationIssue> {
+    let mut issues = Vec::new();
+
+    let expected_ns = env.direction.namespace();
+    if env.root_namespace.as_deref() != Some(expected_ns) {
+        issues.push(ValidationIssue::new(
+            "fednow.env.namespace",
+            env.direction.root_element(),
+            format!(
+                "expected namespace {expected_ns}, found {}",
+                env.root_namespace.as_deref().unwrap_or("(none)")
+            ),
+            RuleSource::FedNowProfile,
+        ));
+    }
+
+    let doc_ns = env.document.namespace();
+    match envelope::namespace_for_wrapper(&env.wrapper) {
+        None => issues.push(ValidationIssue::new(
+            "fednow.env.wrapper.unknown",
+            env.direction.message_element(),
+            format!("'{}' is not a modeled FedNow message wrapper", env.wrapper),
+            RuleSource::FedNowProfile,
+        )),
+        Some(expected) if expected != doc_ns => issues.push(ValidationIssue::new(
+            "fednow.env.wrapper.match",
+            env.direction.message_element(),
+            format!(
+                "wrapper '{}' must enclose a {} Document, found {}",
+                env.wrapper,
+                expected.rsplit(':').next().unwrap_or(expected),
+                env.document.message_name()
+            ),
+            RuleSource::FedNowProfile,
+        )),
+        Some(_) => {}
+    }
+
+    if env.header.message_definition_identifier != env.document.message_name() {
+        issues.push(ValidationIssue::new(
+            "fednow.env.msgdefidr.match",
+            "AppHdr/MsgDefIdr",
+            format!(
+                "MsgDefIdr '{}' does not name the enclosed Document ({})",
+                env.header.message_definition_identifier,
+                env.document.message_name()
+            ),
+            RuleSource::FedNowProfile,
+        ));
+    }
+
+    // Direction cross-check: an outgoing envelope carries a service-sent BAH.
+    // (The participant-sent side — To must address the service — is already
+    // enforced by validate_head001.)
+    if env.direction == envelope::Direction::Outgoing
+        && party_member_id(&env.header.from) != Some(FEDNOW_SERVICE_CONNECTION_PARTY)
+    {
+        issues.push(ValidationIssue::new(
+            "fednow.env.fr.service",
+            "AppHdr/Fr",
+            format!(
+                "FedNowOutgoing messages are sent by the FedNow Service application \
+                 ({FEDNOW_SERVICE_CONNECTION_PARTY}) in Fr"
+            ),
+            RuleSource::FedNowProfile,
+        ));
+    }
+
+    issues.extend(validate_head001(&env.header));
+
+    match &env.document {
+        envelope::EnvelopedDocument::CustomerCreditTransfer(d) => {
+            issues.extend(validate_pacs008(d))
+        }
+        envelope::EnvelopedDocument::PaymentStatus(d) => {
+            let dir = match env.direction {
+                envelope::Direction::Incoming => Pacs002Direction::ParticipantToService,
+                envelope::Direction::Outgoing => Pacs002Direction::ServiceToParticipant,
+            };
+            issues.extend(validate_pacs002_direction(d, dir));
+        }
+        envelope::EnvelopedDocument::PaymentStatusRequest(d) => issues.extend(validate_pacs028(d)),
+        envelope::EnvelopedDocument::PaymentReturn(d) => issues.extend(validate_pacs004(d)),
+        envelope::EnvelopedDocument::ReturnRequest(d) => issues.extend(validate_camt056(d)),
+        envelope::EnvelopedDocument::ReturnRequestResponse(d) => issues.extend(validate_camt029(d)),
     }
 
     issues

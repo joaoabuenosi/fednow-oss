@@ -23,6 +23,7 @@
 pub mod builder;
 pub mod camt029;
 pub mod camt056;
+pub mod envelope;
 pub mod error;
 pub mod head001;
 pub mod pacs002;
@@ -33,7 +34,7 @@ pub mod validate;
 
 pub use error::ParseError;
 pub use validate::{
-    validate_camt029, validate_camt056, validate_head001, validate_pacs002,
+    validate_camt029, validate_camt056, validate_envelope, validate_head001, validate_pacs002,
     validate_pacs002_direction, validate_pacs004, validate_pacs008, validate_pacs028,
     Pacs002Direction, RuleSource, ValidationIssue,
 };
