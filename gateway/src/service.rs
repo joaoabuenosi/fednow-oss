@@ -219,6 +219,29 @@ impl<S: PaymentStore, P: FedNowPort> PaymentService<S, P> {
     }
 }
 
+impl<S: PaymentStore, P: FedNowPort> PaymentService<S, P> {
+    /// Sweep every known payment through one reconciliation pass. Errors on
+    /// individual payments are collected, not fatal — one stuck payment must
+    /// not stop the sweep.
+    pub fn reconcile_all(
+        &self,
+        date_yyyymmdd: &str,
+        now_unix: i64,
+        timeout_secs: i64,
+        backoff_secs: i64,
+    ) -> Vec<(String, ServiceError)> {
+        let mut errors = Vec::new();
+        for key in self.store.keys() {
+            if let Err(e) =
+                self.reconcile(&key, date_yyyymmdd, now_unix, timeout_secs, backoff_secs)
+            {
+                errors.push((key, e));
+            }
+        }
+        errors
+    }
+}
+
 fn advice_event(advice_xml: &str, now_unix: i64) -> Option<PaymentEvent> {
     let doc = pacs002::parse(advice_xml).ok()?;
     let (status, reason) = advice_from_pacs002(&doc)?;

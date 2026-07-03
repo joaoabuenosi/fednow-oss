@@ -190,10 +190,15 @@ name = "fednow-gateway"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "chrono",
  "fednow-core",
  "fednow-sim",
+ "http-body-util",
+ "serde",
+ "serde_json",
  "thiserror",
  "tokio",
+ "tower",
  "ureq",
 ]
 
