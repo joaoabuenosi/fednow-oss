@@ -21,3 +21,7 @@ Thumbs.db
 *.key
 .env
 .env.*
+
+# Python
+__pycache__/
+*.pyc

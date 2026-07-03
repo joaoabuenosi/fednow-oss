@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fednow-gateway-client"
+version = "0.1.0"
+description = "Python client for the fednow-gateway REST API (FedNow send-side middleware)"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.9"
+authors = [{ name = "FedNow OSS contributors" }]
+keywords = ["fednow", "iso20022", "payments", "banking"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Programming Language :: Python :: 3",
+]
+# Deliberately no runtime dependencies: stdlib only.
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/joaoabuenosi/fednow-oss"
+
+[tool.setuptools.packages.find]
+include = ["fednow_client*"]

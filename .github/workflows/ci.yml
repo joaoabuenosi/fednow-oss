@@ -25,6 +25,33 @@ jobs:
       - name: tests
         run: cargo test --workspace
 
+  python-sdk:
+    # Unit tests against a stub, then the SDK's integration suite against a
+    # LIVE gateway↔simulator pair in MQ mode — the same stack users run.
+    name: python sdk (live stack)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install pytest + the SDK (as a user would)
+        run: pip install pytest ./sdk/python
+      - name: Build the stack
+        run: cargo build -p fednow-sim -p fednow-gateway
+      - name: Launch sim + gateway (MQ mode, fast reconcile timings)
+        run: |
+          ./target/debug/fednow-sim &
+          FEDNOW_GW_SOUTHBOUND=mq FEDNOW_GW_SWEEP_SECS=1 \
+            FEDNOW_GW_TIMEOUT_SECS=3 FEDNOW_GW_BACKOFF_SECS=2 \
+            FEDNOW_GW_DB=/tmp/sdk-ci-gateway.db \
+            ./target/debug/fednow-gateway &
+          timeout 30 bash -c 'until curl -sf localhost:8090/healthz >/dev/null; do sleep 1; done'
+      - name: Unit + integration tests
+        run: FEDNOW_GW_URL=http://localhost:8090 python -m pytest sdk/python -q
+
   xsd-validate:
     # Validates the valid XML fixtures against the official ISO 20022 schemas
     # vendored in core/schemas/ (see core/schemas/README.md for provenance).

@@ -21,6 +21,7 @@ community banks, credit unions and service providers in the US.
 | `fednow-sim` | [`simulator/`](simulator/) | ✅ HTTP + MQ modes | Local FedNow simulator: configurable accept/reject/ACWP/timeout scenarios over a synchronous dev endpoint *or* MQ-style queue-pair semantics — a preparation tool for the Fed's Customer Testing Program (CTP) |
 | `fednow-gateway` | [`gateway/`](gateway/) | ✅ full send loop | Send middleware: event-sourced state machine on SQLite, idempotency-keyed REST API, real outbox, background pacs.028 reconciler, and an MQ-style southbound adapter (`FEDNOW_GW_SOUTHBOUND=mq`) |
 | `fednow-conformance` | [`conformance/`](conformance/) | ✅ 24 vectors | Conformance suite any implementation can run: language-agnostic vector corpus (bare Documents + envelopes), message validator CLI, and a live CTP scenario runner |
+| `fednow-gateway-client` | [`sdk/python/`](sdk/python/) | ✅ v0 (Python) | Zero-dependency Python client for the gateway REST API — idempotent submits, `wait_final` that understands the timeout case, profile violations as exceptions with rule codes; integration-tested against the live stack in CI |
 
 ## Current milestone
 
