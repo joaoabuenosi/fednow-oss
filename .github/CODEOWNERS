@@ -1,0 +1,10 @@
+# Review required from these owners when "Require review from Code Owners" is
+# enabled on the main branch protection.
+*                       @joaoabuenosi
+/core/                  @joaoabuenosi
+/gateway/               @joaoabuenosi
+/simulator/             @joaoabuenosi
+/conformance/           @joaoabuenosi
+/sdk/                   @joaoabuenosi
+/.github/               @joaoabuenosi
+/.claude/               @joaoabuenosi
