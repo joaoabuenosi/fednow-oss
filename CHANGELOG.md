@@ -18,6 +18,10 @@ All notable changes to this project are documented here. The format follows
   MQI via the IBM redistributable client behind an `ibm-mq` feature flag.
 - Dependency majors consolidated: ureq 3 (adapter migration), rusqlite 0.40
   (MSRV → 1.95), toml 1, checkout v7, gh-release v3.
+- Security: rustls 0.23.41 → 0.23.45 (pulled in transitively by ureq) for
+  [RUSTSEC-2026-0285](https://rustsec.org/advisories/RUSTSEC-2026-0285.html):
+  TLS 1.3 handshake messages were accepted across encryption level
+  boundaries. Lockfile-only; no API or behaviour change on our side.
 
 Planned: real IBM MQ transport implementation (phases in the design doc),
 message signing once the Technical Specifications wire format is obtained
