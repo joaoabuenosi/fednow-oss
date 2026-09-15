@@ -23,6 +23,10 @@ All notable changes to this project are documented here. The format follows
   and `BuildError::Serialize` now wrap the 0.42 `DeError`/`SeError` types
   (upstream renamed `DeError::UnexpectedStart` to `MixedContent`); parsing
   behaviour is unchanged.
+- Security: rustls 0.23.41 → 0.23.45 (pulled in transitively by ureq) for
+  [RUSTSEC-2026-0285](https://rustsec.org/advisories/RUSTSEC-2026-0285.html):
+  TLS 1.3 handshake messages were accepted across encryption level
+  boundaries. Lockfile-only; no API or behaviour change on our side.
 
 Planned: real IBM MQ transport implementation (phases in the design doc),
 message signing once the Technical Specifications wire format is obtained
