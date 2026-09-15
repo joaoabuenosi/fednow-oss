@@ -18,6 +18,11 @@ All notable changes to this project are documented here. The format follows
   MQI via the IBM redistributable client behind an `ibm-mq` feature flag.
 - Dependency majors consolidated: ureq 3 (adapter migration), rusqlite 0.40
   (MSRV → 1.95), toml 1, checkout v7, gh-release v3.
+- **quick-xml 0.42** (`fednow-core`): name accessors now yield `&str`, so
+  element-name matching compares against string literals. `ParseError::Xml`
+  and `BuildError::Serialize` now wrap the 0.42 `DeError`/`SeError` types
+  (upstream renamed `DeError::UnexpectedStart` to `MixedContent`); parsing
+  behaviour is unchanged.
 
 Planned: real IBM MQ transport implementation (phases in the design doc),
 message signing once the Technical Specifications wire format is obtained

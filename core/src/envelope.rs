@@ -155,17 +155,17 @@ pub fn split(xml: &str) -> Result<RawEnvelope<'_>, ParseError> {
                 match depth {
                     1 => {
                         direction = match local {
-                            b"FedNowIncoming" => Some(Direction::Incoming),
-                            b"FedNowOutgoing" => Some(Direction::Outgoing),
+                            "FedNowIncoming" => Some(Direction::Incoming),
+                            "FedNowOutgoing" => Some(Direction::Outgoing),
                             _ => {
                                 return Err(ParseError::Envelope(format!(
                                     "root element '{}' is not FedNowIncoming/FedNowOutgoing",
-                                    String::from_utf8_lossy(local)
+                                    local
                                 )))
                             }
                         };
                         for attr in e.attributes().flatten() {
-                            if attr.key.as_ref() == b"xmlns" {
+                            if attr.key.as_ref() == "xmlns" {
                                 if let Ok(v) =
                                     attr.normalized_value(quick_xml::XmlVersion::default())
                                 {
@@ -180,7 +180,7 @@ pub fn split(xml: &str) -> Result<RawEnvelope<'_>, ParseError> {
                         }
                     }
                     2 => {
-                        in_technical_header = local == b"FedNowTechnicalHeader";
+                        in_technical_header = local == "FedNowTechnicalHeader";
                         if in_technical_header {
                             tech_inner_start = Some(reader.buffer_position() as usize);
                         }
@@ -200,7 +200,7 @@ pub fn split(xml: &str) -> Result<RawEnvelope<'_>, ParseError> {
                                 Some(&xml[pos_before + offset..pos_before + offset + name.len()]);
                         }
                     }
-                    4 if local == b"AppHdr" || local == b"Document" => {
+                    4 if local == "AppHdr" || local == "Document" => {
                         element_start = Some(pos_before);
                     }
                     _ => {}
@@ -212,7 +212,7 @@ pub fn split(xml: &str) -> Result<RawEnvelope<'_>, ParseError> {
                 let pos_after = reader.buffer_position() as usize;
                 match depth {
                     2 => {
-                        if local == b"FedNowTechnicalHeader" {
+                        if local == "FedNowTechnicalHeader" {
                             if let Some(start) = tech_inner_start.take() {
                                 technical_header = Some(&xml[start..pos_before]);
                             }
@@ -221,9 +221,9 @@ pub fn split(xml: &str) -> Result<RawEnvelope<'_>, ParseError> {
                     }
                     4 => {
                         if let Some(start) = element_start.take() {
-                            if local == b"AppHdr" {
+                            if local == "AppHdr" {
                                 app_header = Some(&xml[start..pos_after]);
-                            } else if local == b"Document" {
+                            } else if local == "Document" {
                                 document = Some(&xml[start..pos_after]);
                             }
                         }
@@ -355,7 +355,7 @@ fn sniff_default_namespace(xml: &str) -> Option<&str> {
         match reader.read_event() {
             Ok(Event::Start(e)) => {
                 for attr in e.attributes().flatten() {
-                    if attr.key.as_ref() == b"xmlns" {
+                    if attr.key.as_ref() == "xmlns" {
                         let v = attr
                             .normalized_value(quick_xml::XmlVersion::default())
                             .ok()?;

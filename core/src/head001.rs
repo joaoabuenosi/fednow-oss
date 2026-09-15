@@ -40,14 +40,14 @@ pub fn sgntr_raw(xml: &str) -> Option<&str> {
         let pos_before = reader.buffer_position() as usize;
         match reader.read_event() {
             Ok(Event::Start(e)) => {
-                if depth == 1 && inner_start.is_none() && e.local_name().as_ref() == b"Sgntr" {
+                if depth == 1 && inner_start.is_none() && e.local_name().as_ref() == "Sgntr" {
                     inner_start = Some(reader.buffer_position() as usize);
                 }
                 depth += 1;
             }
             Ok(Event::End(e)) => {
                 depth = depth.saturating_sub(1);
-                if depth == 1 && e.local_name().as_ref() == b"Sgntr" {
+                if depth == 1 && e.local_name().as_ref() == "Sgntr" {
                     if let Some(start) = inner_start {
                         return Some(&xml[start..pos_before]);
                     }
