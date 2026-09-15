@@ -1,0 +1,57 @@
+name: Weekly Digest (standup)
+
+# tech-lead routine that runs on GitHub: every Friday 17:00 BRT (20:00 UTC)
+# it opens a `standup` issue with what merged during the week (grouped by
+# crate), open PRs and failed workflow runs. No AI involved — only data from
+# GitHub itself; the qualitative reading happens locally with /esteira:standup.
+
+on:
+  schedule:
+    - cron: "0 20 * * 5"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+  actions: read
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const { execSync } = require("child_process");
+            const since = new Date(Date.now() - 7 * 864e5);
+            const sinceIso = since.toISOString();
+            const log = execSync(`git log --since="${sinceIso}" --no-merges --pretty=format:"- %h %s (%an)" origin/main`).toString().trim();
+            const areas = [
+              ["core", /^core\//m], ["simulator", /^simulator\//m], ["gateway", /^gateway\//m],
+              ["conformance", /^conformance\//m], ["sdk", /^sdk\//m], ["docs", /^(docs\/|[A-Z]+\.md$)/m],
+            ];
+            const byArea = Object.fromEntries([...areas.map(a => [a[0], []]), ["other", []]]);
+            for (const line of log.split("\n").filter(Boolean)) {
+              const sha = line.split(" ")[1];
+              const files = execSync(`git show --pretty=format: --name-only ${sha}`).toString();
+              const hit = areas.find(([, re]) => re.test(files));
+              byArea[hit ? hit[0] : "other"].push(line);
+            }
+            const prs = (await github.rest.pulls.list({ ...context.repo, state: "open", per_page: 50 })).data
+              .map(p => `- #${p.number} ${p.title} (${p.head.ref}, ${p.draft ? "draft" : "open"})`);
+            const runs = (await github.rest.actions.listWorkflowRunsForRepo({ ...context.repo, per_page: 50, created: `>=${sinceIso.slice(0,10)}` })).data.workflow_runs
+              .filter(r => r.conclusion === "failure")
+              .map(r => `- ❌ ${r.name} — ${r.head_branch} — ${r.html_url}`);
+            const sec = (t, a) => `### ${t}\n${a.length ? a.join("\n") : "_nothing_"}\n`;
+            const body = [
+              `Week from ${since.toISOString().slice(0,10)} to ${new Date().toISOString().slice(0,10)}.`,
+              ...Object.entries(byArea).map(([k, v]) => sec(`Merged — ${k}`, v)),
+              sec("Open PRs", prs),
+              sec("Failed workflow runs this week", runs),
+              "Qualitative reading and next roadmap step: `/esteira:standup` in the repository.",
+            ].join("\n");
+            await github.rest.issues.create({ ...context.repo, title: `Weekly standup — ${new Date().toISOString().slice(0,10)}`, body, labels: ["standup"] });
