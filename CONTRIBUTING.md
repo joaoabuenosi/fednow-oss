@@ -7,6 +7,7 @@ is to pick an open issue or open a discussion before writing code.
 
 - **Language:** code, comments, commits and docs are in English.
 - **Branches:** `main` is protected; all changes land via pull request with green CI.
+- **Pipeline:** the repo ships a Claude Code plugin setup (`.claude/settings.json`, plugin `esteira`) and `AGENTS.md` with the rules agents follow; the PR template lists the gates.
 - **CI must pass:** `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`
   and `cargo test --workspace` run on every push and PR.
 - **No credentials, certificates or institution-specific data** in the repo — ever.
