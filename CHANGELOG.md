@@ -18,6 +18,11 @@ All notable changes to this project are documented here. The format follows
   MQI via the IBM redistributable client behind an `ibm-mq` feature flag.
 - Dependency majors consolidated: ureq 3 (adapter migration), rusqlite 0.40
   (MSRV → 1.95), toml 1, checkout v7, gh-release v3.
+- **quick-xml 0.42** (`fednow-core`): name accessors now yield `&str`, so
+  element-name matching compares against string literals. `ParseError::Xml`
+  and `BuildError::Serialize` now wrap the 0.42 `DeError`/`SeError` types
+  (upstream renamed `DeError::UnexpectedStart` to `MixedContent`); parsing
+  behaviour is unchanged.
 - Security: rustls 0.23.41 → 0.23.45 (pulled in transitively by ureq) for
   [RUSTSEC-2026-0285](https://rustsec.org/advisories/RUSTSEC-2026-0285.html):
   TLS 1.3 handshake messages were accepted across encryption level
