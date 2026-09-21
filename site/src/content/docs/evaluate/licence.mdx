@@ -3,6 +3,8 @@ title: Licence
 description: Pacsmith is Apache-2.0 — permissive, with an explicit patent grant and a warranty disclaimer.
 ---
 
+import facts from '../../../generated/project-facts.json';
+
 Pacsmith is released under the **Apache License, Version 2.0**. The authoritative text is
 [`LICENSE`](https://github.com/joaoabuenosi/fednow-oss/blob/main/LICENSE) in the repository;
 this page only says what it means in practice. Where the two differ, the file wins.
@@ -25,7 +27,7 @@ this page only says what it means in practice. Where the two differ, the file wi
 
 Apache-2.0 provides the software **"as is", without warranties or conditions of any kind**,
 and limits contributor liability. That is not boilerplate to skim past here: this project is
-early development, is not production-ready, and is not certified or approved by any payment
+{facts.status.lowerLabel}, is not production-ready, and is not certified or approved by any payment
 operator. If you put it on a path that moves real money, the testing, the sign-off and the
 risk are yours.
 
@@ -34,6 +36,6 @@ software infringes — worth knowing, rarely relevant.
 
 ## Dependencies
 
-The licences of everything the release contains are enumerated in the CycloneDX and SPDX
-SBOMs published with each signed release. See
+The licences of everything the release contains are enumerated in the
+{facts.assets.sbomFormats.join(' and ')} SBOMs published with each signed release. See
 [Evaluate](/evaluate/#software-bill-of-materials) for how to fetch and verify them.

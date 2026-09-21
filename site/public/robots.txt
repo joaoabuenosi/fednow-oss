@@ -1,6 +1,12 @@
 # Pacsmith — https://pacsmith.org
 # Everything here is public documentation; nothing is hidden from crawlers, and
 # the site carries no metatags or hidden text bearing anyone else's marks.
+#
+# The site counts page views with Vercel Web Analytics: cookieless, first-party
+# (/_vercel/insights/ on this domain), no personal data and no IP addresses
+# stored, nothing written to your device to do it, no consent banner needed.
+# The site sets no cookies at all; it keeps two local UI preferences, named on
+# /about/#privacy, which never leave the browser.
 User-agent: *
 Allow: /
 

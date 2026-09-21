@@ -6,7 +6,7 @@ The project site, built with [Astro Starlight](https://starlight.astro.build/).
 npm ci
 npm run dev      # sync + dev server
 npm run build    # sync + static build into dist/
-npm run check    # dependency audit + trademark and footer checks over dist/
+npm run check    # dependency audit + the nine output checks + their self-test
 ```
 
 Node 22+ (`.nvmrc`). **Run it from a full checkout** — the build reads markdown from the
@@ -37,8 +37,67 @@ Edit the source file, never the generated page. The sync also:
   `src/generated/verify-release.json`, so `/evaluate/` cannot show a stale command;
 - asserts `LICENSE` is still Apache-2.0, because `/evaluate/licence/` says so in prose.
 
-Hand-authored pages: `index.mdx` (home), `evaluate/index.mdx`, `evaluate/licence.md`,
-`about.md`.
+Hand-authored pages: `index.mdx` (home), `evaluate/index.mdx`, `evaluate/licence.mdx`,
+`about.mdx`. All four are `.mdx` rather than `.md` so they can import the derived project
+facts below; plain `.md` cannot import.
+
+## The site states no project fact twice
+
+The version, the release status, which release started signing, the SBOM formats and asset
+names, and the cargo-audit / Scorecard / Dependabot cadences are **not written on the
+pages**. Every one of them is already stated somewhere in the repository, and two copies
+drift the first time someone bumps a version and does not think about `site/`. A site that
+confidently tells a bank's procurement team last release's version is worse than one that
+says nothing.
+
+`scripts/project-facts.mjs` parses each fact from the file that owns it, and `npm run sync`
+writes the result to `src/generated/project-facts.json` (generated, gitignored) for the MDX
+pages to import:
+
+| Fact | Parsed from |
+|---|---|
+| Version, and the `vX.Y.Z` tag | `Cargo.toml` `[workspace.package] version` |
+| Status label, production-readiness | the `> ⚠️ **…**` line in the root `README.md` |
+| Released versions | the `## [X.Y.Z]` headings in `CHANGELOG.md` |
+| First signed release, the release with no assets | `SECURITY.md` |
+| SBOM assets and formats, the checksums asset | the release-asset table in `SECURITY.md` |
+| `cargo audit` cadence | the `cron` in `.github/workflows/audit.yml` |
+| Scorecard cadence and push branches | `.github/workflows/scorecard.yml` |
+| Dependabot cadence | `.github/dependabot.yml` |
+
+**Every extractor throws on a shape it does not recognise, and that is the feature.** If a
+source file is reworded so a fact can no longer be found, the build fails loudly rather
+than publishing a stale value. The version is also cross-checked: if `README.md`'s status
+line and `Cargo.toml` disagree, the build says so instead of picking one.
+
+When adding a fact to a page, ask first whether the repository already states it. If it
+does, derive it.
+
+## Social preview
+
+`src/assets/og-image.svg` is the source artwork for the Open Graph / Twitter-X card;
+`public/og-image.png` is what crawlers actually fetch, because none of them render SVG.
+Both are committed, and `scripts/render-og.sh` is what keeps them in step:
+
+```sh
+bash scripts/render-og.sh                        # finds a chromium on PATH
+CHROMIUM=/path/to/chrome bash scripts/render-og.sh
+```
+
+It is deliberately **not** part of `npm run build` — it needs a Chromium binary, which the
+site does not otherwise depend on. Edit the SVG, re-run it, commit the regenerated PNG.
+
+The artwork is original: the project's wordmark, an anvil, and the forge-ember accent from
+`custom.css`. No payment operator's mark, logo, imagery or colours appear in it, and the
+FedNow mark appears in neither the image nor its alt text — the alt text is the one piece
+of image metadata a crawler reads, so it is held to the same rule as `<title>`. The
+absolute URL and the alt text both live in `site.config.mjs` (`OG_IMAGE`, `OG_IMAGE_ALT`),
+and the tags are emitted from `head` in `astro.config.mjs`.
+
+Two failure modes are checked rather than trusted, because neither shows up in a diff:
+a render cropped by Chromium's "new" headless mode (which lays out in a viewport shorter
+than `--window-size`), and a PNG that is not 1200x630. `scripts/verify-og.mjs` re-reads the
+committed PNG and fails on either — from `render-og.sh` and again from `npm run check`.
 
 ## Trademark rules
 
@@ -60,17 +119,81 @@ Every page also carries the non-affiliation footer, rendered site-wide by
 `src/components/Footer.astro`. No Federal Reserve logos, colours or imagery are used, and
 the site makes no claim of certification, compatibility or production approval.
 
-`npm run check` enforces the mechanical half of this against the built output: no mark
-inside `<head>` on any page, the footer on every page, no mark in any built path, no
-analytics, and no unevaluated MDX expressions in links. **Run it after every build.**
+`npm run check` enforces the mechanical half of this against the built output, in nine
+checks: no mark inside `<head>` on any page, the footer on every page, no mark in any built
+path, analytics that is first-party and cookieless (below), no unevaluated MDX expressions
+in links, no retired ABA routing numbers, no mark in any `og:`/`twitter:` tag or `alt`
+attribute **anywhere in the document** (not just `<head>`, which is where checks 1 and 7
+differ), no mark in the bytes of the social preview image itself, and every "Edit page"
+link resolving to a file that exists (below). **Run it after every build.**
 
 It also runs `npm audit --omit=dev --audit-level=high` first, so a high-severity advisory
 in a runtime dependency fails the same command that guards the trademark rules. That step
 needs network access; `bash scripts/check-build.sh` runs the output checks alone if you are
 offline.
 
+### Every check is proved able to fail
+
+`scripts/selftest-checks.sh` runs last, and is the reason to trust the nine above. Review of
+this PR's first commit found two checks that reported PASS on **every possible input** — one
+regex closed with the wrong backreference, and one grep was scoped to `*.html` so a tracker
+in a JS bundle was invisible. Both were green. Neither was checking anything, which is worse
+than having no check, because the pages make narrow privacy claims *on the strength of them*.
+
+So the self-test takes the real build, injects one specific violation, and asserts **that
+specific check** reports FAIL — 23 cases covering all nine. Asserting a non-zero exit code is
+not enough, and was itself a bug during development: an unrelated check was failing for its
+own reason and every negative test looked like it passed. It also runs a positive control
+first, because if the unmodified build does not pass cleanly, none of the negative cases
+prove anything.
+
+A check that cannot fail is not a check. This is what stops one shipping.
+
 When adding a page: put the mark-free wording in `title`/`description`, and the descriptive
 wording in the body.
+
+## "Edit page" links
+
+Starlight builds an edit URL as `editLink.baseUrl` plus the page's path relative to the
+**Astro project root**, which here is `site/` — not the repository root. `baseUrl`
+therefore ends in `/edit/main/site/`. Pages synced by `scripts/sync-docs.mjs` are
+unaffected either way: each writes its own `editUrl` frontmatter pointing at the repository
+file it was generated from.
+
+Three pages opt out with `editUrl: false` in their frontmatter — the home page, `/about/`
+and `/evaluate/`. Those are the project's own statements rather than documentation to
+crowd-edit, and an edit button on a page that procurement and risk read next to the licence
+and the disclosure process reads oddly. Everything under Build keeps its link: that is the
+standard invitation to contribute, and GitHub routes a non-maintainer through a fork and a
+pull request anyway.
+
+Check `[9/9]` resolves every edit link in the build back to a file in the working tree, so
+a link that 404s fails the build instead of being discovered by whoever clicked it. It also
+fails if *every* edit link disappears, which would mean the Build pages lost theirs by
+accident.
+
+## Maintainer's personal data
+
+`src/content/docs/about.md` is the only page that states anything about the maintainer, and
+its frontmatter carries the rule: name, GitHub handle and the one line of background, and
+nothing beyond them without the maintainer's own words. See **AGENTS.md → Rules →
+Maintainer's personal data** in the repository root; keep the two in step.
+
+## CI
+
+`.github/workflows/ci.yml` has a **`site`** job: `npm ci`, `npm run build`, `npm run check`,
+on pull requests and pushes to `main`. A change to this repository can break the site build
+(`sync-docs.mjs` fails on a relative link that resolves nowhere; `project-facts.mjs` fails on
+a source it can no longer parse) or falsify it (a reworded privacy claim, a reintroduced
+routing number, the mark in a metatag). Vercel would find that out on deploy, after merge.
+This finds it in review.
+
+GitHub has no per-job `paths:` filter and the workflow-level `on:` has none, because the Rust
+jobs must run on every change — so a tiny `site-changes` job works out whether the diff
+touches anything the site reads (`site/**`, any `*.md` anywhere, `docs/**`, `Cargo.toml`,
+`.github/workflows/**`) and `site` runs only if it does. Any markdown counts, not just the
+root files: the crate READMEs are site sources too. With no usable diff base — a first push,
+a force-push — it fails **safe** and runs the job.
 
 ## Deployment
 
@@ -82,6 +205,9 @@ two project-level settings that a file cannot express:
 - **Include files outside the root directory in the build step**: **enabled** — required,
   because the sync reads the repository's markdown from `..`. Without it the build fails
   with an explicit message rather than publishing an empty site.
+- **Web Analytics**: **enable it** (Project → Analytics), or the first-party
+  `/_vercel/insights/` route is not served and the page-view count silently stays empty.
+  See "Analytics" above.
 
 Canonical URL is `https://pacsmith.org` (`site.config.mjs`). **The domain is not registered
 yet**; nothing here configures DNS. Until it exists, Vercel's generated URL serves the site
@@ -91,6 +217,41 @@ referenced by the build. Override with `SITE_URL` in the Vercel project if neede
 
 ## Analytics
 
-None. The site sets no cookies and makes no third-party requests except the OpenSSF
-Scorecard badge on `/evaluate/`. See the `TODO(analytics)` in `astro.config.mjs` before
-adding any — the choice has to be cookieless and must not need a consent banner.
+**Vercel Web Analytics**, loaded from two plain script tags in `head` in
+`astro.config.mjs`. It replaced a `TODO(analytics)` there which said not to enable it
+without first checking what it stores. That check was done, against Vercel's current Web
+Analytics privacy documentation and against the shipped `@vercel/analytics` source:
+
+- **No cookies.** Visitors are distinguished by a hash Vercel derives server-side from the
+  incoming request, discarded after 24 hours. Nothing is written to the browser, so no
+  consent banner is required.
+- **First-party.** Both the script and the endpoint it reports to are served from this
+  site's own origin under `/_vercel/insights/`. No request goes to any third-party host.
+- **No personal data or IP addresses** are stored or made available.
+
+The npm package is deliberately **not** used. It swaps in a `va.vercel-scripts.com` debug
+script outside production — a third-party request the site does not want — and two script
+tags keep the site's dependency count at two. Check `[4/8]` fails the build if that host,
+or any other tracker, ever appears.
+
+### The site's privacy claims are checked, not asserted
+
+`/evaluate/`, `/about/#privacy` and `public/robots.txt` each state exactly what the site
+does. `npm run check` holds them to it:
+
+- no third-party tracker, and every `/_vercel/insights` reference root-relative;
+- nothing touches `document.cookie`, anywhere;
+- browser storage limited to the two keys `/about/#privacy` names in full —
+  `starlight-theme` (`localStorage`) and `sl-sidebar-state` (`sessionStorage`), both
+  written by Starlight to remember the theme and sidebar you left, both purely local. A
+  third key fails the build until the table on `/about/` is updated;
+- and the analytics script and the prose must agree: if the script is present while any
+  page still carries the old "loads no analytics" wording, the build fails. **The site must
+  never make a claim that is not exactly true — that is the check that enforces it.**
+
+### Maintainer step, outside this repository
+
+`/_vercel/insights/script.js` is served by Vercel only once **Web Analytics is enabled for
+the project in the Vercel dashboard** (Project → Analytics → Enable). Until then the tags
+are inert and the request 404s, which is harmless. Nothing in this repository can turn it
+on.

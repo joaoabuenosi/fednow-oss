@@ -21,6 +21,24 @@
 export const SITE_URL = process.env.SITE_URL ?? 'https://pacsmith.org';
 export const SITE_BASE = process.env.SITE_BASE ?? '';
 
+/**
+ * The social preview card, as an ABSOLUTE URL.
+ *
+ * Open Graph and Twitter/X crawlers do not resolve a relative og:image against
+ * the page they found it on, so this has to be absolute — and it therefore
+ * tracks SITE_URL, including when SITE_URL is overridden to a preview host.
+ *
+ * Source artwork: src/assets/og-image.svg, rendered to public/og-image.png by
+ * scripts/render-og.sh. Both are committed; crawlers do not render SVG.
+ *
+ * TRADEMARK RULE: OG_IMAGE_ALT is the alt text a crawler reads, which makes it
+ * metadata, which means the FedNow mark must not appear in it — same rule as
+ * <title>. scripts/check-build.sh enforces that over the built pages.
+ */
+export const OG_IMAGE = `${SITE_URL.replace(/\/$/, '')}${SITE_BASE.replace(/\/$/, '')}/og-image.png`;
+export const OG_IMAGE_ALT =
+  'Pacsmith — an open-source ISO 20022 toolkit for US instant payments';
+
 /** The repository the docs are synced from — the single source of truth. */
 export const REPO = 'joaoabuenosi/fednow-oss';
 export const REPO_URL = `https://github.com/${REPO}`;

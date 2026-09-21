@@ -8,6 +8,12 @@ head:
   # every <title> on this site must be.
   - tag: title
     content: Pacsmith — an open-source ISO 20022 toolkit for US instant payments
+# No "Edit page" link. This page is a statement by the project, not
+# documentation to crowd-edit, and an edit button on a page procurement and risk
+# read alongside the licence and the disclosure process reads oddly. The
+# Build/docs pages keep theirs: that is the standard invitation to contribute,
+# and GitHub routes a non-maintainer through a fork and a pull request anyway.
+editUrl: false
 template: splash
 hero:
   # The tagline is rendered in the page body only, never in metadata, so the
@@ -15,6 +21,8 @@ hero:
   tagline: An open-source ISO 20022 toolkit for the FedNow® Service. Apache-2.0, signed releases, no telemetry.
 tableOfContents: false
 ---
+
+import facts from '../../generated/project-facts.json';
 
 [More than 1,700 banks and credit unions](https://www.richmondfed.org/publications/research/economic_brief/2026/eb_26-28) had joined the network by the first quarter
 of 2026, and [many signed up only to receive](https://www.paymentsdive.com/news/fednow-advances-over-hurdles/825071/) — the Federal Reserve does not publish
@@ -49,19 +57,21 @@ Two people arrive here wanting opposite first pages. Pick yours.
 
     - [**Signed releases**](/evaluate/#verifying-a-release) — keyless Sigstore
       signatures, with the exact `cosign verify-blob` command to check one yourself.
-    - [**SBOM**](/evaluate/#software-bill-of-materials) — CycloneDX and SPDX, on
+    - [**SBOM**](/evaluate/#software-bill-of-materials) — {facts.assets.sbomFormats.join(' and ')}, on
       every release.
     - [**OpenSSF Scorecard**](/evaluate/#openssf-scorecard) — a public, third-party
-      score, updated weekly.
+      score, updated {facts.cadence.scorecard}.
     - [**Vulnerability disclosure**](/evaluate/#reporting-a-vulnerability) — where
       to send a report and what happens next.
     - [**Licence**](/evaluate/licence/) — Apache-2.0, patent grant included.
+    - [**Talk to the maintainer**](/evaluate/#talk-to-the-maintainer) — evaluation
+      questions, pilots and design-partner access, and where to send them.
   </div>
 </div>
 
 ## Where the project stands
 
-Early development, **v0.3.1**. The complete send loop works end to end — build, validate,
+{facts.status.label}, **{facts.tag}**. The complete send loop works end to end — build, validate,
 send, advise, reconcile — with production-style MQ semantics, the returns message set, and
 Python and Java clients. It is **not production-ready**, pre-1.0 minor versions may break
 APIs, and nothing here is certified by anyone. Message signing is still blocked on

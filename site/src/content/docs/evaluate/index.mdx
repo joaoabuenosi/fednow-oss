@@ -1,19 +1,26 @@
 ---
 # TRADEMARK RULE: no FedNow mark in `title` or `description` — they become
 # <title>, <meta name="description"> and the Open Graph tags.
+# No "Edit page" link. This page is a statement by the project, not
+# documentation to crowd-edit, and an edit button on a page procurement and risk
+# read alongside the licence and the disclosure process reads oddly. The
+# Build/docs pages keep theirs: that is the standard invitation to contribute,
+# and GitHub routes a non-maintainer through a fork and a pull request anyway.
+editUrl: false
 title: Evaluate
 description: "What you get if you adopt this: signed releases you can verify yourself, SBOMs, a public OpenSSF score, a disclosure process and an Apache-2.0 licence."
 ---
 
 import { Code, Aside, LinkCard, CardGrid } from '@astrojs/starlight/components';
 import verify from '../../../generated/verify-release.json';
+import facts from '../../../generated/project-facts.json';
 
 This page is for the people who have to sign off on the software, not write against it.
 Everything below is checkable from outside the project — you do not have to take the
 maintainer's word for any of it.
 
 <Aside type="caution" title="What this project does not claim">
-Pacsmith is **early development (v0.3.1)** and is **not production-ready**. It is an
+Pacsmith is **{facts.status.lowerLabel} ({facts.tag})** and is **not production-ready**. It is an
 independent open-source project: nothing here is certified, approved or endorsed by the
 Federal Reserve or any other operator, and no compatibility with the FedNow® Service is
 guaranteed. Pre-1.0 minor versions may break APIs. Evaluate it as what it is — a reference
@@ -47,35 +54,58 @@ verification section ever moves or changes shape, the site build fails instead o
 publishing a command that does not work.
 </Aside>
 
-Signing starts with **v0.3.1**. Earlier releases carry no signature bundle, and v0.3.0 has
-no assets at all — its release run failed before the artifacts were produced. Use v0.3.1 or
-later. The [security policy](/evaluate/security-policy/#verifying-a-release) has the
-full detail, including why checksums alone prove nothing about origin.
+Signing starts with **{facts.releases.signingStartsAt}**. Earlier releases carry no signature
+bundle, and {facts.releases.noAssets} has no assets at all — its release run failed before the
+artifacts were produced. Use {facts.releases.signingStartsAt} or later. The
+[security policy](/evaluate/security-policy/#verifying-a-release) has the full detail,
+including why checksums alone prove nothing about origin.
 
 ## Software Bill of Materials
 
 Every signed release ships two SBOMs of the same build:
 
-| Asset | Format | Produced from |
-|---|---|---|
-| `*.cdx.json` | CycloneDX | `cargo-cyclonedx`, over the committed `Cargo.lock` |
-| `*.spdx.json` | SPDX | the same release build |
+{/* Rows come from the release-asset table in SECURITY.md, parsed at build time
+    by scripts/project-facts.mjs — so this page cannot list an SBOM the releases
+    do not ship, or miss one they do. No `key` prop: Astro renders this to static
+    HTML rather than reconciling it, and `key` would be emitted as a literal
+    attribute on the <tr>. */}
+<table>
+  <thead>
+    <tr><th>Asset</th><th>Format</th></tr>
+  </thead>
+  <tbody>
+    {facts.assets.sboms.map((sbom) => (
+      <tr>
+        <td><code>{sbom.asset}</code></td>
+        <td>{sbom.format}</td>
+      </tr>
+    ))}
+  </tbody>
+</table>
 
 Both are signed with the same keyless flow as the binaries, so an SBOM can be verified with
-the command above — swap the filenames. `SHA256SUMS` covers the tarball and both SBOMs, and
-is signed too.
+the command above — swap the filenames. <code>{facts.assets.checksums}</code> covers the
+tarball and both SBOMs, and is signed too. The
+[security policy](/evaluate/security-policy/#supply-chain) has the full asset table,
+including how each SBOM is produced.
 
 Dependency advisories are not left to release time: `cargo audit` runs on every lockfile
-change and daily, and Dependabot opens weekly update pull requests.
+change and {facts.cadence.audit}, and Dependabot opens {facts.cadence.dependabotCargo} update
+pull requests.
 
 ## OpenSSF Scorecard
 
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/joaoabuenosi/fednow-oss/badge)](https://scorecard.dev/viewer/?uri=github.com/joaoabuenosi/fednow-oss)
 
-The [OpenSSF Scorecard](https://securityscorecards.dev/) runs weekly and on every push to
-`main`, publishes to the public OpenSSF API, and uploads its findings to the repository's
-code scanning tab. The badge above is served by OpenSSF, not by this site — it shows the
+The [OpenSSF Scorecard](https://securityscorecards.dev/) runs {facts.cadence.scorecard} and on
+every push to <code>{facts.cadence.scorecardPushBranches.join(', ')}</code>, publishes to the
+public OpenSSF API, and uploads its findings to the repository's code scanning tab. The badge above is served by OpenSSF, not by this site — it shows the
 current score whether or not that score is flattering.
+
+Raising it is ongoing work rather than a finished job: the most recent step was
+[#84](https://github.com/joaoabuenosi/fednow-oss/pull/84), which pinned every third-party
+action to a commit SHA and scoped every workflow's permissions, and the checks still
+counting against the score are being closed the same way.
 
 <Aside type="tip" title="Pinning is enforced, not just claimed">
 Every third-party action in **every** workflow is pinned to a 40-character commit SHA
@@ -102,6 +132,44 @@ case by case. Credit in the release notes and a CVE where applicable, unless you
 rather stay anonymous. The [full policy](/evaluate/security-policy/#reporting-a-vulnerability)
 has the scope notes, including what is explicitly out of scope.
 
+## Talk to the maintainer
+
+Pacsmith is built and maintained by one person, in the open. If you are at a bank or a
+credit union weighing this up, these conversations are welcome — and genuinely useful,
+because they are what decides what gets built next:
+
+- **Evaluation questions.** Anything on this page that is not specific enough for your
+  sign-off: the supply chain, the licence, the disclosure process, or what is actually
+  implemented today versus what is still on the roadmap.
+- **Pilots.** Standing the gateway and the simulator up against your own environment, and
+  working out what would have to be true before any of it went near production. It is
+  {facts.status.lowerLabel} software; that conversation starts from there, not around it.
+- **Design partners.** The simulator is being packaged as a certification-readiness kit
+  ([#79](https://github.com/joaoabuenosi/fednow-oss/issues/79)) — a local rehearsal of the
+  Customer Testing Program's scenarios, run on your own machines before you book operator
+  time. Institutions that will actually run those scenarios get to shape it.
+
+Two ways to get in touch, both of which already exist:
+
+<CardGrid>
+  <LinkCard
+    title="GitHub Discussions"
+    description="Public, and the better default — someone else is usually asking the same question."
+    href="https://github.com/joaoabuenosi/fednow-oss/discussions"
+  />
+  <LinkCard
+    title="Email the maintainer"
+    description="joaobuenosi@gmail.com — for anything that should not be public, including pilot and design-partner conversations."
+    href="mailto:joaobuenosi@gmail.com"
+  />
+</CardGrid>
+
+Said plainly, because you would find out anyway: this is not a vendor relationship and
+there is no support contract behind it. The 72-hour acknowledgement above is a commitment
+about **vulnerability reports**; everything else is answered as soon as one maintainer
+reasonably can. Security problems still go through the disclosure process, never through
+either channel here.
+
 ## Licence, data and telemetry
 
 <CardGrid>
@@ -117,10 +185,20 @@ has the scope notes, including what is explicitly out of scope.
   />
 </CardGrid>
 
-Two things worth stating plainly, because evaluators ask:
+Three things worth stating plainly, because evaluators ask:
 
-- **No telemetry, no phone-home.** The software does not report anything anywhere. This
-  website loads no analytics, sets no cookies and makes no third-party requests beyond the
-  OpenSSF badge above.
+- **No telemetry, no phone-home.** The software does not report anything anywhere. Nothing
+  you run reports back to this project, ever.
+- **The website counts page views, and that is all it does.** It uses Vercel Web Analytics:
+  privacy-friendly, cookieless page-view counts. No cookies — none, from anything on this
+  site. No personal data and no IP addresses stored, nothing written to your device by the
+  analytics, and so no consent banner. It is first-party: both the script and the endpoint
+  it reports to are served from this domain under `/_vercel/insights/`, never a
+  third-party host. The only third-party request this site makes is the OpenSSF badge
+  above, fetched from OpenSSF. Two things stated rather than glossed: the site is hosted
+  by Vercel, which already serves every request to it, so this adds a count and not a new
+  party — and the site does keep two **local preferences** in your browser (the light/dark
+  theme you picked, and which sidebar sections you left open). They never leave your
+  browser, identify nobody, and are listed by name on [About](/about/#privacy).
 - **No credentials in the repository, ever** — no certificates, no live endpoints, no real
   routing numbers or institution names. Test fixtures use fictitious identifiers.

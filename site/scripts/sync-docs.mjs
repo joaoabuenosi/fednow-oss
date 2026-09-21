@@ -25,6 +25,13 @@
  *     verification command that does not work.
  *  4. Asserts the licence is still Apache-2.0, because /evaluate/licence/ says
  *     so in prose.
+ *  5. Derives every project fact the hand-authored pages state — the version,
+ *     the release status, which release started signing, the SBOM formats, and
+ *     the cargo-audit / Scorecard / Dependabot cadences — from the repository
+ *     files that own them, into src/generated/project-facts.json. The pages
+ *     import it rather than hard-coding values that go stale the first time
+ *     someone bumps a version and does not think about site/. See
+ *     project-facts.mjs; a source it can no longer parse fails the build.
  */
 
 import { promises as fs } from 'node:fs';
@@ -32,6 +39,7 @@ import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { REPO_URL, href } from '../site.config.mjs';
+import { collectProjectFacts } from './project-facts.mjs';
 
 const SITE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const REPO_ROOT = path.resolve(SITE_DIR, '..');
@@ -312,12 +320,21 @@ async function main() {
     ) + '\n'
   );
 
+  const facts = await collectProjectFacts(REPO_ROOT);
+  await fs.writeFile(
+    path.join(GENERATED_DIR, 'project-facts.json'),
+    JSON.stringify(facts, null, 2) + '\n'
+  );
+
   const licence = await fs.readFile(path.join(REPO_ROOT, 'LICENSE'), 'utf8');
   if (!licence.includes('Apache License') || !licence.includes('Version 2.0')) {
     throw new Error('LICENSE is no longer Apache-2.0, but /evaluate/licence/ says it is. Update the page.');
   }
 
-  console.log(`sync-docs: ${PAGES.length} pages generated from the repository markdown.`);
+  console.log(
+    `sync-docs: ${PAGES.length} pages generated from the repository markdown; ` +
+      `project facts derived for ${facts.tag} (${facts.status.lowerLabel}).`
+  );
 }
 
 main().catch((error) => {
