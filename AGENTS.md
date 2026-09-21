@@ -117,7 +117,12 @@ must stay on the same Debian release.
   `.cosign.bundle` to `.sigstore.json` without touching a page, and that is the
   property to preserve. The `site` job in `ci.yml` builds and checks the site on
   any PR that touches a file the site reads, so a change that would falsify it
-  fails in review rather than after deploy.
+  fails in review rather than after deploy. Rewording a fact in `SECURITY.md`
+  is *meant* to break the build: `npm run check` runs
+  `scripts/selftest-project-facts.sh`, which rewords each fact in a throwaway
+  copy and requires the extractor to refuse it with that fact's own message. A
+  new derived fact needs a case there; `node scripts/derive-facts.mjs` prints
+  what a checkout currently derives.
 
 ## Release
 

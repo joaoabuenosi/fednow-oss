@@ -39,7 +39,7 @@
 import { promises as fs } from 'node:fs';
 import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { REPO_URL, href } from '../site.config.mjs';
 import { collectProjectFacts } from './project-facts.mjs';
 
@@ -272,7 +272,7 @@ function extractConsoleCommand(security, heading, invocation, requiredFlags) {
  * never names a signature or provenance file itself — if the bundles are
  * renamed again, as `.cosign.bundle` was, the page follows automatically.
  */
-function extractVerifyCommands(security) {
+export function extractVerifyCommands(security) {
   return {
     command: extractConsoleCommand(security, 'Verifying a release', 'cosign verify-blob', [
       '--certificate-identity',
@@ -374,7 +374,17 @@ async function main() {
   );
 }
 
-main().catch((error) => {
-  console.error('sync-docs failed:', error.message);
-  process.exit(1);
-});
+// Run the sync only when this file is the process entry point. It is also
+// imported as a module — scripts/derive-facts.mjs pulls `extractVerifyCommands`
+// out of here so selftest-project-facts.sh can prove those extractors reject a
+// reworded SECURITY.md. Without this guard, importing the module would run the
+// whole sync and write into src/generated/ as a side effect of asking a question.
+const invokedDirectly =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (invokedDirectly) {
+  main().catch((error) => {
+    console.error('sync-docs failed:', error.message);
+    process.exit(1);
+  });
+}

@@ -131,6 +131,40 @@ function assetExtension(asset, what) {
 }
 
 /**
+ * Pick the one asset row matching `predicate` — and fail if two of them do.
+ *
+ * `.find()` was the obvious call here and the wrong one. It answers "the first
+ * row that matches", which silently becomes a different row the moment someone
+ * adds another. Two rows matching "provenance" does not mean one of them is the
+ * provenance asset; it means SECURITY.md now says two things and the site has no
+ * basis for publishing either. Picking whichever was written first is the same
+ * class of bug this whole module exists to prevent — a page stating something
+ * nobody checked.
+ *
+ * So ambiguity is an error with the same standing as absence, and the message
+ * names every row that matched, because the fix is always in the table rather
+ * than here.
+ */
+function exactlyOneRow(rows, predicate, what, expectation) {
+  const matches = rows.filter(predicate);
+
+  if (matches.length === 0) {
+    fail('SECURITY.md', what, `No release asset row matched. ${expectation}`);
+  }
+  if (matches.length > 1) {
+    const named = matches.map((row) => `\`${row.asset}\``).join(', ');
+    fail(
+      'SECURITY.md',
+      what,
+      `${matches.length} release asset rows matched, so which one the site should name is ambiguous: ` +
+        `${named}. Exactly one row must match. ${expectation}`
+    );
+  }
+
+  return matches[0];
+}
+
+/**
  * The release asset table under "## Supply chain". Each row is
  * `| `<asset>` | <what it is> |`.
  *
@@ -152,6 +186,9 @@ function releaseAssets(security) {
     fail('SECURITY.md', 'the release assets', 'No `| `asset` | description |` rows under ## Supply chain.');
   }
 
+  // The SBOMs are the one place a list is correct rather than ambiguous: a
+  // release ships CycloneDX *and* SPDX, and /evaluate/ renders a row per format.
+  // Everything else below must match exactly one row.
   const sboms = rows
     .map((row) => {
       const format = row.description.match(/\b(CycloneDX|SPDX)\b/);
@@ -162,31 +199,31 @@ function releaseAssets(security) {
     fail('SECURITY.md', 'the SBOM assets', 'No release asset row mentions CycloneDX or SPDX.');
   }
 
-  const checksums = rows.find((row) => /SHA-?256/i.test(row.description));
-  if (!checksums) fail('SECURITY.md', 'the checksums asset', 'No release asset row mentions SHA-256.');
+  const checksums = exactlyOneRow(
+    rows,
+    (row) => /SHA-?256/i.test(row.description),
+    'the checksums asset',
+    'Expected one row whose description mentions SHA-256.'
+  );
 
   // Matched on "signature" plus Sigstore, not on the extension: the extension is
   // the thing being derived, so keying the search off it would make this extractor
   // agree with itself rather than with SECURITY.md. That is exactly the failure
   // this table is meant to catch — the bundles were already Sigstore bundles while
   // being named `.cosign.bundle`.
-  const signature = rows.find((row) => /\bsignature\b/i.test(row.description) && /Sigstore/i.test(row.description));
-  if (!signature) {
-    fail(
-      'SECURITY.md',
-      'the signature bundle asset',
-      'No release asset row describes a Sigstore signature bundle. Expected a row whose description mentions both "Sigstore" and "signature".'
-    );
-  }
+  const signature = exactlyOneRow(
+    rows,
+    (row) => /\bsignature\b/i.test(row.description) && /Sigstore/i.test(row.description),
+    'the signature bundle asset',
+    'Expected one row whose description mentions both "Sigstore" and "signature".'
+  );
 
-  const provenance = rows.find((row) => /\bprovenance\b/i.test(row.description));
-  if (!provenance) {
-    fail(
-      'SECURITY.md',
-      'the build provenance asset',
-      'No release asset row describes build provenance. Expected a row whose description mentions "provenance".'
-    );
-  }
+  const provenance = exactlyOneRow(
+    rows,
+    (row) => /\bprovenance\b/i.test(row.description),
+    'the build provenance asset',
+    'Expected one row whose description mentions "provenance".'
+  );
 
   return {
     all: rows,
