@@ -6,6 +6,46 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-09-21
+
+A release-pipeline fix. No library, gateway, simulator or conformance code
+changed between 0.3.0 and 0.3.1 — only the workflow that builds and signs the
+artifacts, plus the version and notes that go with it.
+
+### Fixed
+
+- **Release pipeline** — the SPDX SBOM step was pinned to an outdated
+  `anchore/sbom-action` and produced no file; v0.3.0 was published without
+  assets and is superseded by 0.3.1. The pin ([#81](https://github.com/joaoabuenosi/fednow-oss/pull/81)
+  replaced the floating `@v0` ref with the SHA of v0.9.0, a version that
+  predates the `output-file`, `upload-artifact` and `upload-release-assets`
+  inputs the step passes) is now v0.24.2, whose `action.yml` declares all
+  three. The action only warns about inputs it does not know, so the run
+  carried on and failed two steps later in `sha256sum`, before cosign ever
+  ran; nothing was signed
+  ([#83](https://github.com/joaoabuenosi/fednow-oss/pull/83)).
+
+### Added
+
+- Each SBOM step is now followed by a check that the file it owns exists and
+  is non-empty, so a generator that silently produces nothing fails at the
+  step responsible for it and names the likely cause
+  ([#83](https://github.com/joaoabuenosi/fednow-oss/pull/83)).
+- The release workflow accepts `workflow_dispatch` with a `dry_run` input
+  (default on). A dry run executes the same guard, build, test, SBOM and
+  checksum steps against the working tree — naming every asset from a
+  synthetic `v<workspace version>` tag — and attaches the results to the run,
+  so the pipeline can be proven green before a tag is pushed. Signing and the
+  GitHub release live in a separate job that a dry run skips entirely, so the
+  rehearsal path is never granted `id-token: write` or `contents: write`
+  ([#83](https://github.com/joaoabuenosi/fednow-oss/pull/83)).
+
+### Changed
+
+- A dispatched publishing run (`dry_run` off) is refused unless it starts from
+  a tag ref, since cosign binds the signing certificate to the ref
+  ([#83](https://github.com/joaoabuenosi/fednow-oss/pull/83)).
+
 ## [0.3.0] — 2026-09-21
 
 Verifiable releases — signed keyless with Sigstore, with a CycloneDX SBOM —
@@ -202,7 +242,8 @@ reconcile — running end to end against a local FedNow Service simulator.
   XSD validation. `docker compose up` brings up simulator + gateway.
 - Releases ship an SPDX SBOM and SHA-256 checksums.
 
-[Unreleased]: https://github.com/joaoabuenosi/fednow-oss/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/joaoabuenosi/fednow-oss/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/joaoabuenosi/fednow-oss/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/joaoabuenosi/fednow-oss/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/joaoabuenosi/fednow-oss/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/joaoabuenosi/fednow-oss/releases/tag/v0.1.0

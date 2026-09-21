@@ -53,9 +53,11 @@ verify.
 
 ### Verifying a release
 
-> Signing starts with the **first release tagged after this policy was published**.
-> Releases made before that ship checksums and an SBOM but no `.cosign.bundle`; there
-> is nothing to verify on them, and this section does not claim otherwise.
+> Signing starts with **v0.3.1**. Earlier releases ship no `.cosign.bundle`; there is
+> nothing to verify on them, and this section does not claim otherwise. v0.3.0 is a
+> special case: its release run failed in the SBOM step, before cosign ran, so that
+> release carries **no assets at all** — not the tarball, not the SBOMs, not the
+> checksums. Do not treat v0.3.0 as a release; use v0.3.1.
 
 You need [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) v3 or
 newer — the version the release workflow signs with, and the one that reads the bundle
@@ -65,7 +67,7 @@ Download the asset you want and its `.cosign.bundle`, then run the following wit
 set to the release tag you downloaded:
 
 ```console
-$ TAG=v0.3.0   # the release you downloaded
+$ TAG=v0.3.1   # the release you downloaded
 $ cosign verify-blob \
     --bundle "fednow-oss-$TAG-x86_64-linux.tar.gz.cosign.bundle" \
     --certificate-identity "https://github.com/joaoabuenosi/fednow-oss/.github/workflows/release.yml@refs/tags/$TAG" \

@@ -4,7 +4,7 @@
 
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/joaoabuenosi/fednow-oss/badge)](https://scorecard.dev/viewer/?uri=github.com/joaoabuenosi/fednow-oss)
 
-> ⚠️ **Early development (v0.3.0).** Not production-ready yet; pre-1.0 minor
+> ⚠️ **Early development (v0.3.1).** Not production-ready yet; pre-1.0 minor
 > versions may break APIs. See the [CHANGELOG](CHANGELOG.md) and issues/milestones.
 
 **→ [Quick Start](QUICKSTART.md): send your first FedNow payment in 5 minutes**
@@ -28,7 +28,7 @@ community banks, credit unions and service providers in the US.
 
 ## Current milestone
 
-**Done through v0.3.0**: the complete send loop (build → validate → send →
+**Done through v0.3.1**: the complete send loop (build → validate → send →
 advise → reconcile) with production MQ semantics end to end, the returns
 message set (pacs.004, camt.056/029), Python and Java client SDKs, the
 five-minute [Quick Start](QUICKSTART.md), handbook chapters 1, 2, 4 and 5,
