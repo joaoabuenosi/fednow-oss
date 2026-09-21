@@ -25,6 +25,12 @@ client SDKs for Python and the JVM, and a five-minute path from
 - New **OpenSSF Scorecard** workflow publishes its results to the public
   OpenSSF API, uploads findings to code scanning, and adds the README badge
   ([#81](https://github.com/joaoabuenosi/fednow-oss/pull/81)).
+- The release workflow verifies, as its first step, that the pushed tag equals
+  `v` + `[workspace.package] version` from `Cargo.toml`, and fails naming both
+  values otherwise. Nothing is built, packaged or signed before that check, so
+  a mistyped tag can no longer produce a signed artifact whose name disagrees
+  with its contents
+  ([#82](https://github.com/joaoabuenosi/fednow-oss/pull/82)).
 - Security: rustls 0.23.41 → 0.23.45 (pulled in transitively by ureq) for
   [RUSTSEC-2026-0285](https://rustsec.org/advisories/RUSTSEC-2026-0285.html):
   TLS 1.3 handshake messages were accepted across encryption level
@@ -85,9 +91,9 @@ client SDKs for Python and the JVM, and a five-minute path from
 
 Planned: real IBM MQ transport implementation (phases in the design doc),
 message signing once the Technical Specifications wire format is obtained
-([#14](https://github.com/joaoabuenosi/fednow-oss/issues/14)), signed
-container images ([#64](https://github.com/joaoabuenosi/fednow-oss/issues/64)),
-package-registry publication (crates.io, PyPI, Maven Central), public
+([#14](https://github.com/joaoabuenosi/fednow-oss/issues/14)), published
+release artifacts — crates.io, container images, PyPI and Maven Central
+([#64](https://github.com/joaoabuenosi/fednow-oss/issues/64)) — and public
 benchmarks.
 
 ## [0.2.0] — 2026-07-03

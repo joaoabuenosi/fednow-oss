@@ -36,9 +36,9 @@ and releases signed keyless with Sigstore shipping a CycloneDX and an SPDX
 SBOM. Message **signing** is tracked in
 [#14](https://github.com/joaoabuenosi/fednow-oss/issues/14), blocked on the
 Fed's access-controlled Technical Specifications (distributed at onboarding).
-**Next**: real IBM MQ transport, signed container images
-([#64](https://github.com/joaoabuenosi/fednow-oss/issues/64)), and
-package-registry publication (crates.io, PyPI, Maven Central).
+**Next**: real IBM MQ transport, and published release artifacts — crates.io,
+container images, PyPI and Maven Central
+([#64](https://github.com/joaoabuenosi/fednow-oss/issues/64)).
 
 ```sh
 cargo test --workspace
