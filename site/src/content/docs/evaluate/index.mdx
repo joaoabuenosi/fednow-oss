@@ -1,0 +1,123 @@
+---
+# TRADEMARK RULE: no FedNow mark in `title` or `description` — they become
+# <title>, <meta name="description"> and the Open Graph tags.
+title: Evaluate
+description: "What you get if you adopt this: signed releases you can verify yourself, SBOMs, a public OpenSSF score, a disclosure process and an Apache-2.0 licence."
+---
+
+import { Code, Aside, LinkCard, CardGrid } from '@astrojs/starlight/components';
+import verify from '../../../generated/verify-release.json';
+
+This page is for the people who have to sign off on the software, not write against it.
+Everything below is checkable from outside the project — you do not have to take the
+maintainer's word for any of it.
+
+<Aside type="caution" title="What this project does not claim">
+Pacsmith is **early development (v0.3.1)** and is **not production-ready**. It is an
+independent open-source project: nothing here is certified, approved or endorsed by the
+Federal Reserve or any other operator, and no compatibility with the FedNow® Service is
+guaranteed. Pre-1.0 minor versions may break APIs. Evaluate it as what it is — a reference
+toolchain you run yourself, under a licence that disclaims warranty.
+</Aside>
+
+## Verifying a release
+
+Releases are signed **keylessly** with [Sigstore](https://www.sigstore.dev/): there is no
+private key and no signing secret in the repository. The release workflow exchanges its
+short-lived GitHub Actions OIDC token for an ephemeral certificate, signs with it, and the
+signature is recorded in the public Rekor transparency log. The certificate binds the
+signature to *that workflow, in that repository, at that tag* — which is exactly what the
+command below checks.
+
+You need [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) v3 or newer.
+Nothing else: no key to fetch, no keyring to trust.
+
+<div class="pacsmith-verify">
+  <Code code={verify.command} lang="console" title="Verify a release artifact" />
+</div>
+
+`Verified OK` is the only acceptable output. Anything else is a failure — do not use the
+artifact.
+
+<Aside type="note">
+That command is not typed into this page. It is extracted from
+[`SECURITY.md`](/evaluate/security-policy/) when the site is built, so the command
+shown here and the command in the security policy cannot drift apart. If the policy's
+verification section ever moves or changes shape, the site build fails instead of
+publishing a command that does not work.
+</Aside>
+
+Signing starts with **v0.3.1**. Earlier releases carry no signature bundle, and v0.3.0 has
+no assets at all — its release run failed before the artifacts were produced. Use v0.3.1 or
+later. The [security policy](/evaluate/security-policy/#verifying-a-release) has the
+full detail, including why checksums alone prove nothing about origin.
+
+## Software Bill of Materials
+
+Every signed release ships two SBOMs of the same build:
+
+| Asset | Format | Produced from |
+|---|---|---|
+| `*.cdx.json` | CycloneDX | `cargo-cyclonedx`, over the committed `Cargo.lock` |
+| `*.spdx.json` | SPDX | the same release build |
+
+Both are signed with the same keyless flow as the binaries, so an SBOM can be verified with
+the command above — swap the filenames. `SHA256SUMS` covers the tarball and both SBOMs, and
+is signed too.
+
+Dependency advisories are not left to release time: `cargo audit` runs on every lockfile
+change and daily, and Dependabot opens weekly update pull requests.
+
+## OpenSSF Scorecard
+
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/joaoabuenosi/fednow-oss/badge)](https://scorecard.dev/viewer/?uri=github.com/joaoabuenosi/fednow-oss)
+
+The [OpenSSF Scorecard](https://securityscorecards.dev/) runs weekly and on every push to
+`main`, publishes to the public OpenSSF API, and uploads its findings to the repository's
+code scanning tab. The badge above is served by OpenSSF, not by this site — it shows the
+current score whether or not that score is flattering.
+
+<Aside type="note" title="Where the score is not yet perfect">
+The security policy states that third-party actions are pinned to a commit SHA. That is
+true of the release and Scorecard workflows; **pinning the remaining workflows is still in
+progress**, and a CI guard that fails on an unpinned `uses:` is being added alongside it.
+This page deliberately does not restate the claim as a site-level guarantee — read it at
+the source, in [`SECURITY.md`](/evaluate/security-policy/#practices), and check the
+current state of the [workflows themselves](https://github.com/joaoabuenosi/fednow-oss/tree/main/.github/workflows).
+</Aside>
+
+## Reporting a vulnerability
+
+Do **not** open a public issue for a security problem.
+
+- Preferred: [GitHub private vulnerability reporting](https://github.com/joaoabuenosi/fednow-oss/security/advisories/new) —
+  the "Report a vulnerability" button under the repository's *Security* tab.
+- If you cannot use GitHub: email the maintainer with the subject given in the policy.
+
+Acknowledgement within **72 hours**, a triage verdict within **7 days**, fix timelines agreed
+case by case. Credit in the release notes and a CVE where applicable, unless you would
+rather stay anonymous. The [full policy](/evaluate/security-policy/#reporting-a-vulnerability)
+has the scope notes, including what is explicitly out of scope.
+
+## Licence, data and telemetry
+
+<CardGrid>
+  <LinkCard
+    title="Apache-2.0"
+    description="Permissive, with an explicit patent grant and a warranty disclaimer."
+    href="/evaluate/licence/"
+  />
+  <LinkCard
+    title="Security policy"
+    description="Disclosure process, supply chain, and the practices this project holds itself to."
+    href="/evaluate/security-policy/"
+  />
+</CardGrid>
+
+Two things worth stating plainly, because evaluators ask:
+
+- **No telemetry, no phone-home.** The software does not report anything anywhere. This
+  website loads no analytics, sets no cookies and makes no third-party requests beyond the
+  OpenSSF badge above.
+- **No credentials in the repository, ever** — no certificates, no live endpoints, no real
+  routing numbers or institution names. Test fixtures use fictitious identifiers.

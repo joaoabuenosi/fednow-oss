@@ -1,0 +1,39 @@
+---
+/**
+ * Footer override.
+ *
+ * Starlight renders <Footer /> on every route — hero pages, ordinary doc pages
+ * and the built-in 404 alike — which makes this the one place that guarantees
+ * the non-affiliation notice appears site-wide. `npm run check` greps every
+ * built page for the sentence below and fails if any page is missing it.
+ *
+ * The wording is fixed. "FedNow" appears here as visible body text, used to
+ * attribute the mark to its owner — which is the opposite of implying
+ * endorsement, and the reason this sentence exists.
+ */
+import Default from '@astrojs/starlight/components/Footer.astro';
+---
+
+<Default><slot /></Default>
+
+<div class="pacsmith-legal" data-pagefind-ignore>
+  <p>
+    Pacsmith is an independent open-source project. Not affiliated with, endorsed by or
+    sponsored by the Federal Reserve. FedNow is a service mark of the Federal Reserve Banks.
+  </p>
+</div>
+
+<style>
+  .pacsmith-legal {
+    margin-top: 2.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--sl-color-gray-5);
+  }
+  .pacsmith-legal p {
+    margin: 0;
+    font-size: var(--sl-text-xs);
+    line-height: 1.6;
+    color: var(--sl-color-gray-3);
+    text-wrap: pretty;
+  }
+</style>

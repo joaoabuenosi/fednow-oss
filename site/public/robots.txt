@@ -1,0 +1,7 @@
+# Pacsmith — https://pacsmith.org
+# Everything here is public documentation; nothing is hidden from crawlers, and
+# the site carries no metatags or hidden text bearing anyone else's marks.
+User-agent: *
+Allow: /
+
+Sitemap: https://pacsmith.org/sitemap-index.xml

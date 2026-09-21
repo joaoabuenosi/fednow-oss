@@ -1,0 +1,39 @@
+---
+title: Licence
+description: Pacsmith is Apache-2.0 — permissive, with an explicit patent grant and a warranty disclaimer.
+---
+
+Pacsmith is released under the **Apache License, Version 2.0**. The authoritative text is
+[`LICENSE`](https://github.com/joaoabuenosi/fednow-oss/blob/main/LICENSE) in the repository;
+this page only says what it means in practice. Where the two differ, the file wins.
+
+## What it gives you
+
+- **Use, modify and redistribute**, including commercially and in closed-source products.
+- **An explicit patent grant** from contributors covering their contributions — the main
+  reason Apache-2.0 is usually the licence a bank's counsel is least unhappy about.
+- **No copyleft on your own code.** You are not obliged to open-source what you build on top.
+
+## What it asks of you
+
+- Keep the licence and copyright notices with any copy or substantial portion.
+- State significant changes you made to the files you redistribute.
+- Keep the `NOTICE` attributions, if a release ever ships one.
+- Do not use the project's names or marks to endorse your derivative.
+
+## What it does not give you
+
+Apache-2.0 provides the software **"as is", without warranties or conditions of any kind**,
+and limits contributor liability. That is not boilerplate to skim past here: this project is
+early development, is not production-ready, and is not certified or approved by any payment
+operator. If you put it on a path that moves real money, the testing, the sign-off and the
+risk are yours.
+
+The patent grant also terminates for anyone who initiates patent litigation alleging the
+software infringes — worth knowing, rarely relevant.
+
+## Dependencies
+
+The licences of everything the release contains are enumerated in the CycloneDX and SPDX
+SBOMs published with each signed release. See
+[Evaluate](/evaluate/#software-bill-of-materials) for how to fetch and verify them.

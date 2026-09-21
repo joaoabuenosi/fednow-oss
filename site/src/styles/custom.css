@@ -1,0 +1,65 @@
+/*
+ * Pacsmith theme.
+ *
+ * Deliberately NOT the Federal Reserve's palette: no Fed blue, no Fed imagery,
+ * no borrowed visual identity. The accent is a forge-ember orange — the smith
+ * half of the name — which no payments operator uses as its mark.
+ */
+:root {
+  --sl-color-accent-low: #3a1a05;
+  --sl-color-accent: #c2560f;
+  --sl-color-accent-high: #ffb37a;
+  --pacsmith-door-border: var(--sl-color-gray-5);
+}
+
+:root[data-theme='light'] {
+  --sl-color-accent-low: #ffd9bd;
+  --sl-color-accent: #b34d0b;
+  --sl-color-accent-high: #5c2704;
+}
+
+/* The two doors on the home page. */
+.pacsmith-doors {
+  display: grid;
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+
+@media (min-width: 50rem) {
+  .pacsmith-doors {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.pacsmith-door {
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem;
+  border: 1px solid var(--pacsmith-door-border);
+  border-radius: 0.5rem;
+  background: var(--sl-color-black);
+}
+
+.pacsmith-door h2 {
+  margin-top: 0;
+  font-size: var(--sl-text-2xl);
+  border: none;
+}
+
+.pacsmith-door > p:first-of-type {
+  color: var(--sl-color-gray-2);
+  margin-top: 0.25rem;
+}
+
+.pacsmith-door ul {
+  padding-inline-start: 1.1rem;
+}
+
+.pacsmith-door li + li {
+  margin-top: 0.35rem;
+}
+
+/* The command block on /evaluate/ should read as something you copy, not decoration. */
+.pacsmith-verify {
+  margin-block: 1rem;
+}
