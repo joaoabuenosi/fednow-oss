@@ -10,10 +10,12 @@
 **→ [Quick Start](QUICKSTART.md): send your first FedNow payment in 5 minutes**
 (Docker + curl, no Rust required — settle, reject, and survive the timeout case).
 
-Most of the 1,500+ institutions on the FedNow network are receive-only: implementing the
-send side (ISO 20022 messaging, signing, timeout reconciliation, 24x7 operations) is
-expensive and complex. This monorepo is a reference toolchain to change that, aimed at
-community banks, credit unions and service providers in the US.
+[More than 1,700 banks and credit unions](https://www.richmondfed.org/publications/research/economic_brief/2026/eb_26-28) had joined the FedNow network by the first
+quarter of 2026, and [many signed up only to receive](https://www.paymentsdive.com/news/fednow-advances-over-hurdles/825071/) — the Federal Reserve does not
+publish how many of them can send. Implementing the send side (ISO 20022 messaging,
+signing, timeout reconciliation, 24x7 operations) is expensive and complex. This monorepo
+is a reference toolchain to change that, aimed at community banks, credit unions and
+service providers in the US.
 
 ## Components
 
