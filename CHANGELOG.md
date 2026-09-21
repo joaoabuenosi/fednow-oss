@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- **Supply chain**: releases are now signed keyless with Sigstore/cosign
+  (GitHub Actions OIDC — no private key, no repository secret), ship a merged
+  CycloneDX SBOM (`cargo-cyclonedx`) alongside the existing SPDX one, and carry
+  a `.cosign.bundle` per asset. New OpenSSF Scorecard workflow publishes its
+  results and adds the README badge. Third-party actions in the release and
+  Scorecard workflows are pinned to commit SHAs and every job declares minimal
+  `permissions`. `SECURITY.md` now documents the exact `cosign verify-blob`
+  command instead of asserting that releases are signed.
 - **QUICKSTART.md**: 5-minute Docker + curl walkthrough, every output
   captured from a live run (settle, reject, timeout→pacs.028, 422 with rule
   codes); compose pins a 2s sweeper so the documented timings hold.

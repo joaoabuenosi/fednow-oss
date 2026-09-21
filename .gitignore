@@ -28,3 +28,10 @@ __pycache__/
 
 # Working notes for the AI pair (local only)
 CLAUDE.md
+
+# SBOMs generated locally by cargo-cyclonedx (CI produces the released ones)
+*.cdx.json
+*.spdx.json
+
+# Sigstore signature bundles
+*.cosign.bundle

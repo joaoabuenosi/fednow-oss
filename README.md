@@ -2,6 +2,8 @@
 
 **Open-source tooling to lower the cost of building _send_ capability on the FedNow® Service.**
 
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/joaoabuenosi/fednow-oss/badge)](https://scorecard.dev/viewer/?uri=github.com/joaoabuenosi/fednow-oss)
+
 > ⚠️ **Early development (v0.2.0).** Not production-ready yet; pre-1.0 minor
 > versions may break APIs. See the [CHANGELOG](CHANGELOG.md) and issues/milestones.
 
@@ -69,7 +71,11 @@ MQ technical envelope.
 
 ## Security
 
-See [SECURITY.md](SECURITY.md) for the vulnerability disclosure process.
+See [SECURITY.md](SECURITY.md) for the vulnerability disclosure process, and for the
+supply chain: releases are signed keyless with [Sigstore](https://www.sigstore.dev/)
+(no private key, no signing secret), ship a CycloneDX and an SPDX SBOM, and can be
+verified with a single `cosign verify-blob` — the exact command is in
+[SECURITY.md](SECURITY.md#verifying-a-release).
 
 ## License
 
