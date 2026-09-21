@@ -1,5 +1,20 @@
 ---
 # TRADEMARK RULE: no FedNow mark in `title` or `description`.
+#
+# PERSONAL DATA RULE (see AGENTS.md, "Maintainer's personal data"). The only
+# facts about the maintainer this page may state are: the name João Bueno, the
+# GitHub handle @joaoabuenosi, and that they are a payments engineer who ran Pix
+# point-of-sale middleware in production. No employer, location, dates, job
+# titles or other past roles — not inferred, not embellished, not filled in from
+# context. Anything further needs the maintainer's own words; if something is
+# missing, leave a TODO for them rather than guessing. A surname was once
+# invented in "Who maintains it", which is why this is written down.
+# No "Edit page" link. This page is a statement by the project, not
+# documentation to crowd-edit, and an edit button on a page procurement and risk
+# read alongside the licence and the disclosure process reads oddly. The
+# Build/docs pages keep theirs: that is the standard invitation to contribute,
+# and GitHub routes a non-maintainer through a fork and a pull request anyway.
+editUrl: false
 title: About
 description: Who maintains Pacsmith, why it exists, and what it is not.
 ---
@@ -26,12 +41,13 @@ a runbook.
 
 ## Who maintains it
 
-Built and maintained by **João Bueno Simonassi** — a payments engineer who ran Pix
-point-of-sale middleware in production: instant payments, 24x7, in a market where the
-rail's settlement is final and the merchant is standing at the terminal waiting. That is
-the same problem shape as an instant-payment send side in the US, and most of the hard-won
-lessons transfer directly: idempotency is not optional, timeouts are a state and not an
-error, and reconciliation is a product feature rather than an operations chore.
+Built and maintained by **João Bueno** ([@joaoabuenosi](https://github.com/joaoabuenosi)) —
+a payments engineer who ran Pix point-of-sale middleware in production.
+
+That is the same problem shape as an instant-payment send side in the US: a rail whose
+settlement is final, running 24x7, with someone on the other end waiting for an answer.
+Most of the lessons transfer directly — idempotency is not optional, timeouts are a state
+and not an error, and reconciliation is a product feature rather than an operations chore.
 
 The project is documentation-first on purpose. The
 [Integration handbook](/docs/handbook/) is written alongside the code, every claim either

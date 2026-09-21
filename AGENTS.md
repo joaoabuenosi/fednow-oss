@@ -60,6 +60,25 @@ triage with `/esteira:deps`.
   alter the last digit (`991000008`, `992000007`). The table in
   `docs/handbook/README.md` is the reference, and `site/scripts/check-build.sh`
   fails the site build if a known-real number reappears.
+- **Maintainer's personal data**: never write a personal detail about the
+  maintainer — name, biography, employer, location, dates, job title, past
+  roles — that the maintainer has not provided **verbatim**. Do not infer one
+  from a GitHub handle, a commit email, a package namespace or anything else,
+  and do not embellish a detail that was provided. If a sentence needs a fact
+  that is missing, leave `TODO(maintainer): <what is needed>` for them to fill
+  in; shipping a plausible guess is worse than shipping a gap. This is not
+  hypothetical: a surname was invented in `site/src/content/docs/about.md` and
+  published. The facts currently cleared for publication are exactly:
+
+  | Fact | Value |
+  |---|---|
+  | Name | João Bueno |
+  | GitHub | `@joaoabuenosi` |
+  | Contact | `joaobuenosi@gmail.com` (already published in `SECURITY.md`) |
+  | Background | payments engineer who ran Pix point-of-sale middleware in production |
+
+  Anything beyond that table needs the maintainer's own words first. The same
+  rule governs the site's frontmatter note in `about.md`; keep the two in step.
 - **ISO 20022**: required fields per FedNow profile, correct namespaces; every
   new fixture validates against the vendored XSD and gets a vector in
   `conformance/vectors`.

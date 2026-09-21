@@ -19,8 +19,8 @@
 #      page: an og:image is what gets pasted into a chat, a timeline or a deck,
 #      usually with none of the surrounding text. The mark must therefore be
 #      absent from the og:/twitter: tags, from the alt text they carry, and from
-#      the bytes of the image files themselves. Check [1/8] covers og:/twitter:
-#      tags only while they sit inside <head>; [7/8] and [8/8] cover the rest,
+#      the bytes of the image files themselves. Check [1/9] covers og:/twitter:
+#      tags only while they sit inside <head>; [7/9] and [8/9] cover the rest,
 #      which is the half a <head> grep cannot see.
 #
 # It also checks that the mark is absent from URLs/slugs, and that the only
@@ -53,7 +53,7 @@ status=0
 # ---------------------------------------------------------------- 1. <head> --
 # awk with RS="</head>" yields everything before the first </head>: the doctype,
 # the <html> tag and the whole <head>. grep then looks for the mark in it.
-echo "[1/8] No \"FedNow\" inside <head> (metatags, OG/Twitter, JSON-LD, canonical)"
+echo "[1/9] No \"FedNow\" inside <head> (metatags, OG/Twitter, JSON-LD, canonical)"
 head_hits=0
 for page in "${PAGES[@]}"; do
   if awk 'BEGIN { RS = "</head>" } NR == 1' "$page" | grep -i -q "$MARK"; then
@@ -71,7 +71,7 @@ fi
 echo
 
 # --------------------------------------------------------------- 2. footer --
-echo "[2/8] Non-affiliation footer present on every page"
+echo "[2/9] Non-affiliation footer present on every page"
 missing=0
 for page in "${PAGES[@]}"; do
   if ! grep -qF "$FOOTER" "$page" || ! grep -qF "$FOOTER_MARK" "$page"; then
@@ -93,7 +93,7 @@ echo
 # called fednow-oss, so `check-build.sh /home/me/fednow-oss/site/dist` would
 # report all 18 pages as violations. What is being checked is the published URL
 # space, which is what is left after the prefix comes off.
-echo "[3/8] No \"FedNow\" in URLs or slugs"
+echo "[3/9] No \"FedNow\" in URLs or slugs"
 if slugs=$(find "$DIST" -type f | sed "s|^$DIST/||" | grep -i "$MARK"); then
   echo "      FAIL: built paths contain the mark:"
   echo "$slugs" | sed 's/^/             /'
@@ -128,7 +128,7 @@ echo
 # the old "loads no analytics" wording — the site must never make a false claim,
 # and the way that would happen is by adding the script and forgetting the prose
 # (or removing the prose and forgetting the script).
-echo "[4/8] Analytics: first-party and cookieless, or nothing at all"
+echo "[4/9] Analytics: first-party and cookieless, or nothing at all"
 
 third_party='googletagmanager|google-analytics|gtag\(|plausible\.io|analytics\.js|segment\.com|hotjar|matomo|va\.vercel-scripts\.com'
 if trackers=$(grep -rlE "$third_party" "$DIST" --include='*.html' 2>/dev/null); then
@@ -202,7 +202,7 @@ echo
 # ------------------------------------------------- 5. unresolved MDX exprs --
 # MDX does not evaluate `{...}` in a markdown link destination; such a link is
 # emitted verbatim and URL-encoded (%7B...%7D). Catch it rather than ship it.
-echo "[5/8] No unresolved MDX expressions in links"
+echo "[5/9] No unresolved MDX expressions in links"
 if broken=$(grep -rlE 'href="%7B|href="\{|src="%7B' "$DIST" --include='*.html' 2>/dev/null); then
   echo "      FAIL: unevaluated expressions in href/src:"
   echo "$broken" | sed 's/^/             /'
@@ -218,7 +218,7 @@ echo
 # 0210xxxxx pair sit in an assignable New York range with valid check digits,
 # which is exactly what makes them unsafe to publish. Replacements all begin
 # with 99, a block the ABA assigns to nobody.
-echo "[6/8] No known-real ABA routing numbers in the published output"
+echo "[6/9] No known-real ABA routing numbers in the published output"
 DENYLIST="091000019 021040078 021150706 021040079 091000018"
 rtn_hits=0
 for rtn in $DENYLIST; do
@@ -237,12 +237,12 @@ fi
 echo
 
 # ------------------------------------------- 7. social / image metadata --
-# Check [1/8] greps <head>, which is where these tags live today — but "today"
+# Check [1/9] greps <head>, which is where these tags live today — but "today"
 # is doing a lot of work in that sentence. An og:image can be emitted from a
 # component, a <noscript> block or an integration that appends to <body>, and
 # alt text is never in <head> at all. Both are machine-readable metadata under
 # the mark's terms, so both are checked wherever they appear in the document.
-echo "[7/8] No \"FedNow\" in og:/twitter: metadata or in any image alt text"
+echo "[7/9] No \"FedNow\" in og:/twitter: metadata or in any image alt text"
 meta_hits=0
 for page in "${PAGES[@]}"; do
   # Whole-document, not just <head>: every og:/twitter: meta tag, and every
@@ -302,7 +302,7 @@ echo
 # card, and artwork reaching the bottom edge rather than a silently cropped
 # render. Neither is visible in a diff, and a wrong social card is only ever
 # noticed by the person you were trying to impress.
-echo "[8/8] The social preview image carries no mark, and is a valid 1200x630 card"
+echo "[8/9] The social preview image carries no mark, and is a valid 1200x630 card"
 OG_SVG="src/assets/og-image.svg"
 OG_PNG="$DIST/og-image.png"
 img_status=0
@@ -329,6 +329,53 @@ if [ -f "$OG_PNG" ]; then
   fi
 fi
 [ "$img_status" -eq 0 ] || status=1
+echo
+
+# ------------------------------------------------- 9. "Edit page" links --
+# Starlight builds an edit URL as its configured baseUrl plus the page's path
+# relative to the ASTRO PROJECT ROOT (site/), not the repository root — so a
+# hand-authored page silently produced `edit/main/src/content/docs/...`, which
+# 404s, while every page synced by sync-docs.mjs was fine because it writes its
+# own editUrl. Nothing failed; the links just did not work, and the only way
+# anyone finds that out is by clicking one.
+#
+# So: resolve every edit link in the build back to a file in the working tree.
+# The build runs from a full checkout (sync-docs.mjs already insists on it), so
+# the repository root is one level up and the file either exists or it does not.
+# A page with no edit link at all is fine — /, /about/ and /evaluate/ drop
+# theirs on purpose, because they are the project's statements rather than docs
+# to crowd-edit.
+echo "[9/9] Every \"Edit page\" link resolves to a file in the repository"
+EDIT_PREFIX="https://github.com/joaoabuenosi/fednow-oss/edit/main/"
+REPO_ROOT="$(cd .. && pwd)"
+edit_bad=0
+edit_seen=0
+while IFS= read -r url; do
+  [ -n "$url" ] || continue
+  edit_seen=$((edit_seen + 1))
+  rel="${url#"$EDIT_PREFIX"}"
+  if [ "$rel" = "$url" ]; then
+    echo "      FAIL: edit link does not point at this repository: $url"
+    edit_bad=$((edit_bad + 1))
+  elif [ ! -f "$REPO_ROOT/$rel" ]; then
+    echo "      FAIL: edit link 404s — $rel does not exist in the repository"
+    echo "             $url"
+    edit_bad=$((edit_bad + 1))
+  fi
+done <<EOF
+$(grep -rhoE "href=\"${EDIT_PREFIX}[^\"]*\"" "$DIST" --include='*.html' 2>/dev/null \
+  | sed 's/^href="//; s/"$//' | sort -u)
+EOF
+
+if [ "$edit_seen" -eq 0 ]; then
+  echo "      FAIL: no \"Edit page\" link found on any page — the Build/docs pages should keep theirs"
+  status=1
+elif [ "$edit_bad" -eq 0 ]; then
+  echo "      PASS: $edit_seen distinct edit link(s), every one resolving to a file in the repository"
+else
+  echo "      FAIL: $edit_bad of $edit_seen edit link(s) do not resolve"
+  status=1
+fi
 echo
 
 if [ "$status" -eq 0 ]; then

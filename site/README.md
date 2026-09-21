@@ -86,13 +86,13 @@ Every page also carries the non-affiliation footer, rendered site-wide by
 `src/components/Footer.astro`. No Federal Reserve logos, colours or imagery are used, and
 the site makes no claim of certification, compatibility or production approval.
 
-`npm run check` enforces the mechanical half of this against the built output, in eight
+`npm run check` enforces the mechanical half of this against the built output, in nine
 checks: no mark inside `<head>` on any page, the footer on every page, no mark in any built
 path, analytics that is first-party and cookieless (below), no unevaluated MDX expressions
 in links, no retired ABA routing numbers, no mark in any `og:`/`twitter:` tag or `alt`
 attribute **anywhere in the document** (not just `<head>`, which is where checks 1 and 7
-differ), and no mark in the bytes of the social preview image itself. **Run it after every
-build.**
+differ), no mark in the bytes of the social preview image itself, and every "Edit page"
+link resolving to a file that exists (below). **Run it after every build.**
 
 It also runs `npm audit --omit=dev --audit-level=high` first, so a high-severity advisory
 in a runtime dependency fails the same command that guards the trademark rules. That step
@@ -101,6 +101,33 @@ offline.
 
 When adding a page: put the mark-free wording in `title`/`description`, and the descriptive
 wording in the body.
+
+## "Edit page" links
+
+Starlight builds an edit URL as `editLink.baseUrl` plus the page's path relative to the
+**Astro project root**, which here is `site/` — not the repository root. `baseUrl`
+therefore ends in `/edit/main/site/`. Pages synced by `scripts/sync-docs.mjs` are
+unaffected either way: each writes its own `editUrl` frontmatter pointing at the repository
+file it was generated from.
+
+Three pages opt out with `editUrl: false` in their frontmatter — the home page, `/about/`
+and `/evaluate/`. Those are the project's own statements rather than documentation to
+crowd-edit, and an edit button on a page that procurement and risk read next to the licence
+and the disclosure process reads oddly. Everything under Build keeps its link: that is the
+standard invitation to contribute, and GitHub routes a non-maintainer through a fork and a
+pull request anyway.
+
+Check `[9/9]` resolves every edit link in the build back to a file in the working tree, so
+a link that 404s fails the build instead of being discovered by whoever clicked it. It also
+fails if *every* edit link disappears, which would mean the Build pages lost theirs by
+accident.
+
+## Maintainer's personal data
+
+`src/content/docs/about.md` is the only page that states anything about the maintainer, and
+its frontmatter carries the rule: name, GitHub handle and the one line of background, and
+nothing beyond them without the maintainer's own words. See **AGENTS.md → Rules →
+Maintainer's personal data** in the repository root; keep the two in step.
 
 ## Deployment
 

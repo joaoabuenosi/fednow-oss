@@ -25,7 +25,16 @@ export default defineConfig({
         'An open-source ISO 20022 toolkit for US instant payments: message library, simulator, send gateway and SDKs.',
       credits: false,
       social: [{ icon: 'github', label: 'GitHub', href: REPO_URL }],
-      editLink: { baseUrl: `${REPO_URL}/edit/main/` },
+      // Starlight builds an edit URL as `baseUrl` + the page's path relative to
+      // the ASTRO PROJECT ROOT, which here is site/ — not the repository root.
+      // Without the `site/` segment every hand-authored page pointed at
+      // `edit/main/src/content/docs/...`, which 404s on GitHub. The pages synced
+      // by scripts/sync-docs.mjs were never affected: each one writes an
+      // explicit `editUrl` into its frontmatter pointing at the repository file
+      // it was generated from, which overrides this. Check [9/9] resolves every
+      // edit link in the build against the working tree, so a 404 fails the
+      // build rather than being found by whoever clicked it.
+      editLink: { baseUrl: `${REPO_URL}/edit/main/site/` },
       customCss: ['./src/styles/custom.css'],
       components: {
         // Adds the non-affiliation notice to every page, including 404.
