@@ -8,16 +8,31 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+# Default to nothing; each job asks for exactly what it needs. Without this,
+# every job here inherits the repository default GITHUB_TOKEN scope — and this
+# workflow runs on `pull_request`, so that token is handed to code from any
+# branch a contributor opens a PR from.
+permissions: {}
+
 jobs:
   test:
     name: fmt + clippy + test
     runs-on: ubuntu-latest
+    # Only reads the tree: actions/checkout needs `contents: read` and this
+    # job needs nothing else. No issues, no PR comments, no package writes.
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # This action selects the toolchain by *ref*: `@stable` is a branch, not a
+      # version. Pinning the SHA therefore means also passing the selection as an
+      # input — the pinned commit declares `toolchain` as required. Same pin and
+      # same input as release.yml, so CI and the release build the same way.
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         with:
+          toolchain: stable
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: rustfmt
         run: cargo fmt --all --check
       - name: clippy
@@ -30,11 +45,17 @@ jobs:
     # LIVE gateway↔simulator pair in MQ mode — the same stack users run.
     name: python sdk (live stack)
     runs-on: ubuntu-latest
+    # Only reads the tree: actions/checkout needs `contents: read` and this
+    # job needs nothing else. No issues, no PR comments, no package writes.
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
       - name: Install pytest + the SDK (as a user would)
@@ -57,11 +78,17 @@ jobs:
     # integration suite against a LIVE gateway↔simulator pair in MQ mode.
     name: java sdk (live stack)
     runs-on: ubuntu-latest
+    # Only reads the tree: actions/checkout needs `contents: read` and this
+    # job needs nothing else. No issues, no PR comments, no package writes.
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-java@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: "17"
@@ -84,8 +111,12 @@ jobs:
     # vendored in core/schemas/ (see core/schemas/README.md for provenance).
     name: XSD validation
     runs-on: ubuntu-latest
+    # Only reads the tree: actions/checkout needs `contents: read` and this
+    # job needs nothing else. No issues, no PR comments, no package writes.
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install xmllint
         run: sudo apt-get update -qq && sudo apt-get install -y -qq libxml2-utils
       - name: pacs.008 fixtures
@@ -102,3 +133,22 @@ jobs:
         run: xmllint --noout --schema core/schemas/camt.056.001.08.xsd core/tests/fixtures/camt056_valid*.xml
       - name: camt.029 fixtures
         run: xmllint --noout --schema core/schemas/camt.029.001.09.xsd core/tests/fixtures/camt029_valid*.xml
+
+  workflow-hardening:
+    # SECURITY.md tells vendor-risk reviewers that every third-party action in
+    # this repository is SHA-pinned and that every workflow starts from
+    # `permissions: {}`. Both sentences were true of release.yml and
+    # scorecard.yml and false of this file until #84 — the kind of drift nobody
+    # notices, because nothing fails when a claim in a document stops being
+    # true. This job makes it fail. Checkout plus one bash script: a few
+    # seconds, no toolchain, no network, and no third-party action of its own.
+    name: workflow hardening
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Every action SHA-pinned, every workflow permission-scoped
+        run: ./.github/scripts/check-workflow-hardening.sh

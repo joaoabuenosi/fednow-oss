@@ -10,20 +10,35 @@ on:
     - cron: "0 20 * * 5"
   workflow_dispatch:
 
-permissions:
-  contents: read
-  issues: write
-  pull-requests: read
-  actions: read
+# Default to nothing; each job asks for exactly what it needs.
+permissions: {}
 
 jobs:
   digest:
+    name: Open the weekly standup issue
     runs-on: ubuntu-latest
+    # One job, and it needs all four — the script below reads three different
+    # parts of the repository and writes one issue. Each scope maps to a
+    # specific call in that script; nothing here is speculative.
+    permissions:
+      # actions/checkout, plus the `git log` / `git show` walk over the week.
+      contents: read
+      # issues.create() — the standup issue this workflow exists to open.
+      issues: write
+      # pulls.list() — the "Open PRs" section. Read-only: the digest reports
+      # on pull requests, it never comments on or modifies one.
+      pull-requests: read
+      # actions.listWorkflowRunsForRepo() — the "Failed workflow runs" section.
+      # Read-only: it reads run history, it never triggers or cancels a run.
+      actions: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # Full history: the digest's `git log --since` walks a week back.
           fetch-depth: 0
-      - uses: actions/github-script@v7
+          # This job reads the tree and writes an issue; it never pushes.
+          persist-credentials: false
+      - uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
           script: |
             const { execSync } = require("child_process");

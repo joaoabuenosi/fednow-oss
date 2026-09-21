@@ -14,8 +14,18 @@ updates:
           - minor
           - patch
 
+  # Keeps every SHA pin in .github/workflows/ current. Dependabot resolves the
+  # `# <version>` comment next to each pin, opens a PR bumping the SHA, and
+  # rewrites the comment to the new version — which is why
+  # .github/scripts/check-workflow-hardening.sh treats a missing comment as a
+  # failure: a pin without one silently stops being updated.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
       day: monday
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch

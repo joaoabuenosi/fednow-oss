@@ -6,6 +6,29 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- **Every workflow is now SHA-pinned and permission-scoped**, not just
+  `release.yml` and `scorecard.yml`. An independent verification of the v0.3.1
+  release ([#83](https://github.com/joaoabuenosi/fednow-oss/pull/83)) found two
+  claims in `SECURITY.md`'s "Practices" section that the repository did not
+  actually meet: sixteen `uses:` refs across `ci.yml`, `audit.yml` and
+  `weekly-digest.yml` were floating tags or branches (`dtolnay/rust-toolchain@stable`
+  is a *branch* — its owner can move it under us at any push), and `ci.yml`
+  declared no top-level `permissions:` at all, so every job inherited the
+  repository default `GITHUB_TOKEN` scope while running on `pull_request`.
+  All sixteen are now pinned to a verified commit SHA with a `# <version>`
+  comment, and all three workflows start from `permissions: {}` with per-job
+  scopes justified in comments.
+- **`audit.yml` split by event.** `rustsec/audit-check` opens an issue only on
+  `schedule` events and writes a check run otherwise, so the daily scan
+  (`issues: write`) and the push/PR scan (`checks: write`) are now separate
+  jobs. A run triggered from a pull request can no longer file issues.
+- **Regression guard.** `.github/scripts/check-workflow-hardening.sh` runs as a
+  CI job and fails the build if any workflow gains an unpinned `uses:` or loses
+  its top-level `permissions:` key — bash and grep only, so the check guarding
+  the supply chain adds no supply-chain surface of its own.
+
 ## [0.3.1] — 2026-09-21
 
 A release-pipeline fix. No library, gateway, simulator or conformance code
