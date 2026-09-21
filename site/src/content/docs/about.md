@@ -9,7 +9,10 @@ a local simulator, a send gateway and client SDKs, all Apache-2.0.
 
 ## Why it exists
 
-More than 1,500 institutions are on the network and most of them can only receive. The
+[1,725 banks and credit unions — 1,155 banks and 570 credit unions](https://www.richmondfed.org/publications/research/economic_brief/2026/eb_26-28) had joined the
+network by the first quarter of 2026. How many of them can *send* is not a published figure:
+the Federal Reserve does not release it, and [a Fed spokesperson declined to comment](https://www.paymentsdive.com/news/fednow-advances-over-hurdles/825071/)
+when asked; what is reported is that many institutions signed up only to receive. The
 asymmetry is not an accident — the receive side can be bought as part of a core banking
 package, while the send side means owning ISO 20022 message construction, profile
 validation, message signing, 24x7 operation, and the failure mode nobody demos: **you sent
