@@ -60,34 +60,44 @@ artifacts were produced. Use {facts.releases.signingStartsAt} or later. The
 [security policy](/evaluate/security-policy/#verifying-a-release) has the full detail,
 including why checksums alone prove nothing about origin.
 
-<Aside type="note" title="v0.3.1 named its bundles differently">
-v0.3.1 published its signature bundles as `<asset>.cosign.bundle`. The bytes were already
-the standard Sigstore bundle format — only the extension was non-standard, which meant no
-tool looking for signatures by filename could find them. From the next release onwards the
-same bundles are named `<asset>.sigstore.json`. To verify v0.3.1, substitute
-`.cosign.bundle` for `.sigstore.json` in the command above; nothing else changes.
+<Aside type="note" title={`${facts.releases.legacySignatureName.tag} named its bundles differently`}>
+{facts.releases.legacySignatureName.tag} published its signature bundles under the extension
+<code>{facts.releases.legacySignatureName.extension}</code>. The bytes were already the standard
+Sigstore bundle format — only the extension was non-standard, which meant no tool looking for
+signatures by filename could find them. From the next release onwards the same bundles are
+named <code>{facts.assets.signature.asset}</code>. To verify
+{' '}{facts.releases.legacySignatureName.tag}, substitute
+<code>{facts.releases.legacySignatureName.extension}</code> for
+<code>{facts.assets.signature.extension}</code> in the command above; nothing else changes.
 </Aside>
 
 ## Build provenance
 
-From the release after v0.3.1, each release also carries **SLSA build provenance** as
-`fednow-oss-<tag>.intoto.jsonl`. A signature tells you *this workflow, at this tag, signed
-these bytes*. Provenance is a machine-readable in-toto statement telling you *these bytes
-were produced by this workflow run, from this commit* — the form a policy engine can
-evaluate, rather than a human comparing a certificate identity by eye.
+From the first release after **{facts.releases.provenanceStartsAfter}**, each release also
+carries **SLSA build provenance** as <code>{facts.assets.provenance.asset}</code>. A signature
+tells you *this workflow, at this tag, signed these bytes*. Provenance is a machine-readable
+in-toto statement telling you *these bytes were produced by this workflow run, from this
+commit* — the form a policy engine can evaluate, rather than a human comparing a certificate
+identity by eye.
 
 It is checked with the [GitHub CLI](https://cli.github.com/) rather than cosign:
 
-```console
-$ gh attestation verify "fednow-oss-$TAG-x86_64-linux.tar.gz" \
-    --repo joaoabuenosi/fednow-oss \
-    --signer-workflow joaoabuenosi/fednow-oss/.github/workflows/release.yml
-```
+<div class="pacsmith-verify">
+  <Code code={verify.provenanceCommand} lang="console" title="Verify a release's build provenance" />
+</div>
 
 `--signer-workflow` is the load-bearing flag: `--repo` on its own would accept an
-attestation from any workflow in the repository. Add `--bundle fednow-oss-$TAG.intoto.jsonl`
-to check against the downloaded asset instead of GitHub's attestation API. The
+attestation from any workflow in the repository. Adding `--bundle` with the downloaded
+provenance file checks it without reaching GitHub's attestation API at all. The
 [security policy](/evaluate/security-policy/#verifying-build-provenance) has both forms.
+
+<Aside type="note">
+Like the command above it, this one is extracted from
+[`SECURITY.md`](/evaluate/security-policy/) at build time rather than typed into this page,
+and so are the asset names around it. That is why the rename this section describes could
+happen without anyone editing this page — and why renaming them again could not leave it
+telling you to look for a file that no longer exists.
+</Aside>
 
 ## Software Bill of Materials
 

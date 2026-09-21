@@ -108,8 +108,38 @@ function releaseWithNoAssets(security) {
 }
 
 /**
+ * Split an asset-table cell into its filename template and its extension.
+ *
+ * The cells are templates rather than literal filenames — `<asset>.sigstore.json`,
+ * `fednow-oss-<tag>.intoto.jsonl` — because the real name depends on the tag and,
+ * for signatures, on which asset is being signed. What the site needs to state is
+ * the *extension*, since that is the part that identifies the format and the part
+ * that changed when `.cosign.bundle` was retired.
+ *
+ * Takes everything from the first dot that follows the final `>` placeholder (or
+ * the first dot at all, when the cell carries no placeholder), so a compound
+ * extension such as `.sigstore.json` survives intact instead of being truncated
+ * to `.json`.
+ */
+function assetExtension(asset, what) {
+  const afterPlaceholder = asset.slice(asset.lastIndexOf('>') + 1);
+  const dot = afterPlaceholder.indexOf('.');
+  if (dot < 0) {
+    fail('SECURITY.md', `the extension of ${what}`, `The asset cell \`${asset}\` has no file extension.`);
+  }
+  return afterPlaceholder.slice(dot);
+}
+
+/**
  * The release asset table under "## Supply chain". Each row is
- * `| `<asset>` | <what it is> |`; the SBOM rows are the ones the site lists.
+ * `| `<asset>` | <what it is> |`.
+ *
+ * Four kinds of row are recognised, by what the description says rather than by
+ * position: the SBOMs (CycloneDX / SPDX), the checksums (SHA-256), the Sigstore
+ * signature bundle, and the SLSA build provenance. Every one of them is required.
+ * A release that stopped shipping signatures, or a table reworded so they can no
+ * longer be found, fails the build here rather than leaving /evaluate/ telling a
+ * bank's procurement team to look for a file that is not there.
  */
 function releaseAssets(security) {
   const section = security.split(/^## Supply chain\s*$/m)[1];
@@ -135,7 +165,90 @@ function releaseAssets(security) {
   const checksums = rows.find((row) => /SHA-?256/i.test(row.description));
   if (!checksums) fail('SECURITY.md', 'the checksums asset', 'No release asset row mentions SHA-256.');
 
-  return { all: rows, sboms, checksums: checksums.asset };
+  // Matched on "signature" plus Sigstore, not on the extension: the extension is
+  // the thing being derived, so keying the search off it would make this extractor
+  // agree with itself rather than with SECURITY.md. That is exactly the failure
+  // this table is meant to catch — the bundles were already Sigstore bundles while
+  // being named `.cosign.bundle`.
+  const signature = rows.find((row) => /\bsignature\b/i.test(row.description) && /Sigstore/i.test(row.description));
+  if (!signature) {
+    fail(
+      'SECURITY.md',
+      'the signature bundle asset',
+      'No release asset row describes a Sigstore signature bundle. Expected a row whose description mentions both "Sigstore" and "signature".'
+    );
+  }
+
+  const provenance = rows.find((row) => /\bprovenance\b/i.test(row.description));
+  if (!provenance) {
+    fail(
+      'SECURITY.md',
+      'the build provenance asset',
+      'No release asset row describes build provenance. Expected a row whose description mentions "provenance".'
+    );
+  }
+
+  return {
+    all: rows,
+    sboms,
+    checksums: checksums.asset,
+    signature: {
+      asset: signature.asset,
+      extension: assetExtension(signature.asset, 'the signature bundle'),
+    },
+    provenance: {
+      asset: provenance.asset,
+      extension: assetExtension(provenance.asset, 'the build provenance'),
+    },
+  };
+}
+
+/**
+ * The signature extension a previous release used, and which release that was.
+ *
+ * /evaluate/ has to tell anyone verifying that release to substitute the old
+ * name, and that is a fact SECURITY.md owns — stated in its own note under
+ * "## Supply chain".
+ *
+ * Required, like every other extractor here, rather than optional. There will
+ * come a day when that release falls out of the verification window and the
+ * note is deleted; on that day this fails the build, and whoever deleted it also
+ * deletes the paragraph on /evaluate/ that exists only to explain it. An
+ * extractor that quietly returned null would instead let the page lose a
+ * paragraph nobody noticed was gone.
+ */
+function legacySignatureName(security) {
+  const match = flatten(security).match(/\*\*(v[\d.]+) named the same files `([^`]+)`/);
+  if (!match) {
+    fail(
+      'SECURITY.md',
+      'the previous signature bundle name',
+      'Expected the text `**vX.Y.Z named the same files `.ext`**` under ## Supply chain. ' +
+        'If that release no longer needs a note, delete the matching paragraph from ' +
+        'site/src/content/docs/evaluate/index.mdx and this extractor together.'
+    );
+  }
+  return { tag: match[1], extension: match[2] };
+}
+
+/**
+ * "Build provenance starts with the first release after vX.Y.Z."
+ *
+ * The version pattern is `v\d+(\.\d+)+` rather than the looser `v[\d.]+` the
+ * extractors above use: those all match a version followed by a space, while
+ * this one sits at the end of a sentence, where `[\d.]+` happily swallows the
+ * full stop and yields "v0.3.1.".
+ */
+function provenanceStartsAfter(security) {
+  const match = flatten(security).match(/Build provenance starts with the first release after (v\d+(?:\.\d+)+)/);
+  if (!match) {
+    fail(
+      'SECURITY.md',
+      'the first release carrying build provenance',
+      'Expected the text `Build provenance starts with the first release after vX.Y.Z`.'
+    );
+  }
+  return match[1];
 }
 
 /**
@@ -223,11 +336,15 @@ export async function collectProjectFacts(repoRoot) {
       latest: released[0],
       signingStartsAt: signingStartsAt(security),
       noAssets: releaseWithNoAssets(security),
+      legacySignatureName: legacySignatureName(security),
+      provenanceStartsAfter: provenanceStartsAfter(security),
     },
     assets: {
       sboms: assets.sboms,
       sbomFormats: assets.sboms.map((s) => s.format),
       checksums: assets.checksums,
+      signature: assets.signature,
+      provenance: assets.provenance,
     },
     cadence: {
       audit: workflowCadence(auditWorkflow, '.github/workflows/audit.yml'),

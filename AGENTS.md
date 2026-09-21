@@ -108,12 +108,16 @@ must stay on the same Debian release.
 - **Docs follow behaviour**: visible change → README / QUICKSTART / handbook /
   CHANGELOG in the same PR.
 - **The site derives, never duplicates**: a fact the repository already states
-  (version, release status, SBOM formats, workflow cadences) is parsed at build
-  time by `site/scripts/project-facts.mjs`, not typed into a page. Before adding
-  a fact to a hand-authored page, check whether a repository file owns it; if it
-  does, derive it. The `site` job in `ci.yml` builds and checks the site on any
-  PR that touches a file the site reads, so a change that would falsify it fails
-  in review rather than after deploy.
+  (version, release status, SBOM formats, release asset names, workflow
+  cadences) is parsed at build time by `site/scripts/project-facts.mjs`, not
+  typed into a page; the two verification commands come out of `SECURITY.md` the
+  same way, via `sync-docs.mjs`. Before adding a fact to a hand-authored page,
+  check whether a repository file owns it; if it does, derive it. **No page
+  names a release asset itself** — signature bundles were renamed from
+  `.cosign.bundle` to `.sigstore.json` without touching a page, and that is the
+  property to preserve. The `site` job in `ci.yml` builds and checks the site on
+  any PR that touches a file the site reads, so a change that would falsify it
+  fails in review rather than after deploy.
 
 ## Release
 
