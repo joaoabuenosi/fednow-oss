@@ -12,12 +12,12 @@ use tower::ServiceExt;
 
 fn valid_pacs008(amount_cents: u64) -> String {
     Pacs008Builder::new(
-        fednow_message_id("20260702", "021040078", "SIMTEST001"),
+        fednow_message_id("20260702", "991000009", "SIMTEST001"),
         "2026-07-02T15:30:00Z",
         "E2E-SIMTEST-0001",
         amount_cents,
-        "021040078",
-        "091000019",
+        "991000009",
+        "992000008",
     )
     .uetr("8a562c67-ca16-48ba-b074-65581be6f001")
     .interbank_settlement_date("2026-07-02")
@@ -57,7 +57,7 @@ fn pacs028_query(orig_msg_id: &str) -> String {
 <Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.028.001.03">
   <FIToFIPmtStsReq>
     <GrpHdr>
-      <MsgId>20260702021040078QUERY0001</MsgId>
+      <MsgId>20260702991000009QUERY0001</MsgId>
       <CreDtTm>2026-07-02T15:35:00Z</CreDtTm>
     </GrpHdr>
     <TxInf>
@@ -70,7 +70,7 @@ fn pacs028_query(orig_msg_id: &str) -> String {
         <FinInstnId>
           <ClrSysMmbId>
             <ClrSysId><Cd>USABA</Cd></ClrSysId>
-            <MmbId>021040078</MmbId>
+            <MmbId>991000009</MmbId>
           </ClrSysMmbId>
         </FinInstnId>
       </InstgAgt>
@@ -78,7 +78,7 @@ fn pacs028_query(orig_msg_id: &str) -> String {
         <FinInstnId>
           <ClrSysMmbId>
             <ClrSysId><Cd>USABA</Cd></ClrSysId>
-            <MmbId>021150706</MmbId>
+            <MmbId>993000007</MmbId>
           </ClrSysMmbId>
         </FinInstnId>
       </InstdAgt>
@@ -114,7 +114,7 @@ async fn default_scenario_settles_the_payment() {
     let orig = tx.original_group_information.as_ref().unwrap();
     assert_eq!(
         orig.original_message_identification,
-        "20260702021040078SIMTEST001"
+        "20260702991000009SIMTEST001"
     );
     assert_eq!(
         tx.original_end_to_end_identification.as_deref(),
@@ -166,12 +166,12 @@ async fn config_scenario_overrides_amount_trigger() {
     let config = SimConfig::from_toml(
         r#"
 [scenarios]
-"091000019" = { action = "reject", reason = "RR04" }
+"992000008" = { action = "reject", reason = "RR04" }
 "#,
     )
     .unwrap();
     assert_eq!(
-        config.scenarios["091000019"],
+        config.scenarios["992000008"],
         Scenario::Reject("RR04".to_string())
     );
 
@@ -198,12 +198,12 @@ async fn config_scenario_overrides_amount_trigger() {
 async fn profile_invalid_message_is_rejected_with_simv() {
     // Missing CtgyPurp/accounts/settlement date -> FedNow-profile violations.
     let invalid = Pacs008Builder::new(
-        fednow_message_id("20260702", "021040078", "SIMTEST002"),
+        fednow_message_id("20260702", "991000009", "SIMTEST002"),
         "2026-07-02T15:30:00Z",
         "E2E-SIMTEST-0002",
         5_000,
-        "021040078",
-        "091000019",
+        "991000009",
+        "992000008",
     )
     .to_xml()
     .unwrap();
@@ -237,7 +237,7 @@ async fn timeout_then_pacs028_reveals_the_settled_truth() {
     assert_eq!(status, StatusCode::ACCEPTED, "timeout: no advice");
     assert!(body.is_empty());
 
-    let (status, body) = post_app(&app, pacs028_query("20260702021040078SIMTEST001")).await;
+    let (status, body) = post_app(&app, pacs028_query("20260702991000009SIMTEST001")).await;
     assert_eq!(status, StatusCode::OK, "the query gets an answer: {body}");
     let advice = parse_advice(&body);
     let tx = &advice
@@ -253,7 +253,7 @@ async fn timeout_then_pacs028_reveals_the_settled_truth() {
             .as_ref()
             .unwrap()
             .original_message_identification,
-        "20260702021040078SIMTEST001"
+        "20260702991000009SIMTEST001"
     );
 }
 
@@ -263,7 +263,7 @@ async fn pacs028_also_replays_delivered_advices() {
     let (status, first) = post_app(&app, valid_pacs008(125_011)).await;
     assert_eq!(status, StatusCode::OK);
 
-    let (status, replay) = post_app(&app, pacs028_query("20260702021040078SIMTEST001")).await;
+    let (status, replay) = post_app(&app, pacs028_query("20260702991000009SIMTEST001")).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(first, replay, "the query replays the same RJCT advice");
 }
@@ -272,7 +272,7 @@ async fn pacs028_also_replays_delivered_advices() {
 async fn pacs028_for_unknown_payment_is_a_404() {
     let (status, body) = post(
         SimConfig::default(),
-        pacs028_query("20260702021040078NEVERSENT01"),
+        pacs028_query("20260702991000009NEVERSENT01"),
     )
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
@@ -283,7 +283,7 @@ async fn delay_scenario_settles_after_the_configured_delay() {
     let config = SimConfig::from_toml(
         r#"
 [scenarios]
-"091000019" = { action = "delay", delay_ms = 50 }
+"992000008" = { action = "delay", delay_ms = 50 }
 "#,
     )
     .unwrap();
@@ -330,7 +330,7 @@ async fn acwp_then_follow_up_is_revealed_by_pacs028() {
         Some("ACWP")
     );
 
-    let (status, body) = post_app(&app, pacs028_query("20260702021040078SIMTEST001")).await;
+    let (status, body) = post_app(&app, pacs028_query("20260702991000009SIMTEST001")).await;
     assert_eq!(status, StatusCode::OK);
     let follow_up = parse_advice(&body);
     assert_eq!(
@@ -349,13 +349,13 @@ async fn configured_follow_up_blck_is_honored() {
     let config = SimConfig::from_toml(
         r#"
 [scenarios]
-"091000019" = { action = "accept-without-posting", follow_up = "blck" }
+"992000008" = { action = "accept-without-posting", follow_up = "blck" }
 "#,
     )
     .unwrap();
     let app = router(config);
     let (_, _) = post_app(&app, valid_pacs008(125_000)).await;
-    let (status, body) = post_app(&app, pacs028_query("20260702021040078SIMTEST001")).await;
+    let (status, body) = post_app(&app, pacs028_query("20260702991000009SIMTEST001")).await;
     assert_eq!(status, StatusCode::OK);
     let advice = parse_advice(&body);
     assert_eq!(

@@ -36,7 +36,7 @@ class IntegrationTest {
                 .debtorAccount("123456789012")
                 .creditorName("John Example")
                 .creditorAccount("987654321000")
-                .creditorAgentRoutingNumber("091000019")
+                .creditorAgentRoutingNumber("992000008")
                 .build());
     }
 
@@ -54,7 +54,7 @@ class IntegrationTest {
                 .debtorAccount("123456789012")
                 .creditorName("John Example")
                 .creditorAccount("987654321000")
-                .creditorAgentRoutingNumber("091000019")
+                .creditorAgentRoutingNumber("992000008")
                 .build());
         assertEquals("SETTLED", replay.state());
         assertEquals(settled.events(), replay.events());
@@ -90,7 +90,7 @@ class IntegrationTest {
                         .debtorAccount("123456789012")
                         .creditorName("John Example")
                         .creditorAccount("987654321000")
-                        .creditorAgentRoutingNumber("091000019")
+                        .creditorAgentRoutingNumber("992000008")
                         .build()));
         assertTrue(exc.codes().contains("fednow.ctgypurp.known"));
     }

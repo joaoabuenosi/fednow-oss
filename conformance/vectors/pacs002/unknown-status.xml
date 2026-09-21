@@ -7,7 +7,7 @@
     </GrpHdr>
     <TxInfAndSts>
       <OrgnlGrpInf>
-        <OrgnlMsgId>20260702021040078FIXTURE001</OrgnlMsgId>
+        <OrgnlMsgId>20260702991000009FIXTURE001</OrgnlMsgId>
         <OrgnlMsgNmId>pacs.008.001.08</OrgnlMsgNmId>
         <OrgnlCreDtTm>2026-07-02T10:30:00-05:00</OrgnlCreDtTm>
       </OrgnlGrpInf>
@@ -25,7 +25,7 @@
             <ClrSysId>
               <Cd>USABA</Cd>
             </ClrSysId>
-            <MmbId>021040078</MmbId>
+            <MmbId>991000009</MmbId>
           </ClrSysMmbId>
         </FinInstnId>
       </InstgAgt>
@@ -35,7 +35,7 @@
             <ClrSysId>
               <Cd>USABA</Cd>
             </ClrSysId>
-            <MmbId>091000019</MmbId>
+            <MmbId>992000008</MmbId>
           </ClrSysMmbId>
         </FinInstnId>
       </InstdAgt>

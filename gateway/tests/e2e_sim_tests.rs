@@ -25,7 +25,7 @@ fn service(base_url: &str) -> PaymentService<InMemoryStore, HttpSimPort> {
     PaymentService::new(
         InMemoryStore::new(),
         HttpSimPort::new(base_url),
-        "021040078",
+        "991000009",
     )
 }
 
@@ -42,7 +42,7 @@ fn request(key: &str, reference: &str, amount_cents: u64) -> SubmitRequest {
         debtor_account: "123456789012".to_string(),
         creditor_name: "John Example Creditor".to_string(),
         creditor_account: "987654321000".to_string(),
-        creditor_agent_routing_number: "091000019".to_string(),
+        creditor_agent_routing_number: "992000008".to_string(),
         category_purpose: "CONS".to_string(),
         settlement_date: "2026-07-02".to_string(),
     }

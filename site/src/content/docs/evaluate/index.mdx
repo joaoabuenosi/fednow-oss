@@ -77,13 +77,16 @@ The [OpenSSF Scorecard](https://securityscorecards.dev/) runs weekly and on ever
 code scanning tab. The badge above is served by OpenSSF, not by this site — it shows the
 current score whether or not that score is flattering.
 
-<Aside type="note" title="Where the score is not yet perfect">
-The security policy states that third-party actions are pinned to a commit SHA. That is
-true of the release and Scorecard workflows; **pinning the remaining workflows is still in
-progress**, and a CI guard that fails on an unpinned `uses:` is being added alongside it.
-This page deliberately does not restate the claim as a site-level guarantee — read it at
-the source, in [`SECURITY.md`](/evaluate/security-policy/#practices), and check the
-current state of the [workflows themselves](https://github.com/joaoabuenosi/fednow-oss/tree/main/.github/workflows).
+<Aside type="tip" title="Pinning is enforced, not just claimed">
+Every third-party action in **every** workflow is pinned to a 40-character commit SHA
+carrying a `# <version>` comment, and every workflow starts from `permissions: {}` with
+per-job scopes. Neither is a promise someone has to remember to keep: both are checked on
+every CI run by
+[`check-workflow-hardening.sh`](https://github.com/joaoabuenosi/fednow-oss/blob/main/.github/scripts/check-workflow-hardening.sh),
+which fails the build if a workflow gains an unpinned `uses:` or loses its top-level
+`permissions:` key. Read it at the source in
+[`SECURITY.md`](/evaluate/security-policy/#practices), or check the
+[workflows themselves](https://github.com/joaoabuenosi/fednow-oss/tree/main/.github/workflows).
 </Aside>
 
 ## Reporting a vulnerability

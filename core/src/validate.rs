@@ -1465,7 +1465,7 @@ pub fn validate_envelope(env: &envelope::Envelope) -> Vec<ValidationIssue> {
 }
 
 /// The FedNow Service application connection party identifier.
-const FEDNOW_SERVICE_CONNECTION_PARTY: &str = "021150706";
+const FEDNOW_SERVICE_CONNECTION_PARTY: &str = "993000007";
 
 fn party_member_id(party: &head001::Party44Choice) -> Option<&str> {
     party

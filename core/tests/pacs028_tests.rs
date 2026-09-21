@@ -21,7 +21,7 @@ fn parses_status_request_into_typed_model() {
     let msg = &doc.fi_to_fi_payment_status_request;
     assert_eq!(
         msg.group_header.message_identification,
-        "20260702021040078STATUSREQ01"
+        "20260702991000009STATUSREQ01"
     );
     assert_eq!(msg.transaction_information.len(), 1);
 
@@ -32,7 +32,7 @@ fn parses_status_request_into_typed_model() {
         .expect("request identifies the original message");
     assert_eq!(
         orig.original_message_identification,
-        "20260702021040078FIXTURE001"
+        "20260702991000009FIXTURE001"
     );
     assert_eq!(orig.original_message_name_identification, "pacs.008.001.08");
     assert!(tx.instructing_agent.is_some());
@@ -67,7 +67,7 @@ fn wrong_namespace_is_flagged() {
 #[test]
 fn non_fednow_msgid_is_flagged() {
     let xml = VALID.replace(
-        "<MsgId>20260702021040078STATUSREQ01</MsgId>",
+        "<MsgId>20260702991000009STATUSREQ01</MsgId>",
         "<MsgId>STATUSREQ-0001</MsgId>",
     );
     assert!(codes(&xml).contains(&"fednow.msgid.format"));
@@ -76,7 +76,7 @@ fn non_fednow_msgid_is_flagged() {
 #[test]
 fn missing_orgnlgrpinf_is_flagged() {
     let xml = VALID.replace(
-        "<OrgnlGrpInf>\n        <OrgnlMsgId>20260702021040078FIXTURE001</OrgnlMsgId>\n        <OrgnlMsgNmId>pacs.008.001.08</OrgnlMsgNmId>\n        <OrgnlCreDtTm>2026-07-02T10:30:00-05:00</OrgnlCreDtTm>\n      </OrgnlGrpInf>\n      ",
+        "<OrgnlGrpInf>\n        <OrgnlMsgId>20260702991000009FIXTURE001</OrgnlMsgId>\n        <OrgnlMsgNmId>pacs.008.001.08</OrgnlMsgNmId>\n        <OrgnlCreDtTm>2026-07-02T10:30:00-05:00</OrgnlCreDtTm>\n      </OrgnlGrpInf>\n      ",
         "",
     );
     assert!(codes(&xml).contains(&"fednow.orgnlgrpinf.required"));
@@ -94,7 +94,7 @@ fn non_frs_original_message_name_is_flagged() {
 #[test]
 fn missing_instructed_agent_is_flagged() {
     let xml = VALID.replace(
-        "<InstdAgt>\n        <FinInstnId>\n          <ClrSysMmbId>\n            <ClrSysId>\n              <Cd>USABA</Cd>\n            </ClrSysId>\n            <MmbId>091000019</MmbId>\n          </ClrSysMmbId>\n        </FinInstnId>\n      </InstdAgt>\n    ",
+        "<InstdAgt>\n        <FinInstnId>\n          <ClrSysMmbId>\n            <ClrSysId>\n              <Cd>USABA</Cd>\n            </ClrSysId>\n            <MmbId>992000008</MmbId>\n          </ClrSysMmbId>\n        </FinInstnId>\n      </InstdAgt>\n    ",
         "",
     );
     assert!(codes(&xml).contains(&"fednow.instdagt.required"));
@@ -102,6 +102,6 @@ fn missing_instructed_agent_is_flagged() {
 
 #[test]
 fn bad_routing_checksum_in_agent_is_flagged() {
-    let xml = VALID.replace("<MmbId>021040078</MmbId>", "<MmbId>021040079</MmbId>");
+    let xml = VALID.replace("<MmbId>991000009</MmbId>", "<MmbId>991000008</MmbId>");
     assert!(codes(&xml).contains(&"fednow.aba.checksum"));
 }

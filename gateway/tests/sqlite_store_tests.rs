@@ -9,7 +9,7 @@ use fednow_gateway::{
 fn created(key: &str) -> PaymentEvent {
     PaymentEvent::Created {
         idempotency_key: key.to_string(),
-        message_identification: "20260702021040078SQL0000001".to_string(),
+        message_identification: "20260702991000009SQL0000001".to_string(),
         creation_date_time: "2026-07-02T15:30:00Z".to_string(),
         end_to_end_identification: "E2E-SQL-0001".to_string(),
         uetr: None,
@@ -101,7 +101,7 @@ fn request(key: &str) -> SubmitRequest {
         debtor_account: "123456789012".to_string(),
         creditor_name: "John".to_string(),
         creditor_account: "987654321000".to_string(),
-        creditor_agent_routing_number: "091000019".to_string(),
+        creditor_agent_routing_number: "992000008".to_string(),
         category_purpose: "CONS".to_string(),
         settlement_date: "2026-07-02".to_string(),
     }
@@ -112,7 +112,7 @@ fn transport_failure_leaves_payment_submitted_with_outbox_intact() {
     // The whole point of the outbox: the wire is down, but the send intent is
     // durable — the payment sits in SUBMITTED (timeout clock NOT running) and
     // the sweeper retries later. Nothing was half-sent, nothing was lost.
-    let svc = PaymentService::new(SqliteStore::in_memory().unwrap(), DeadPort, "021040078");
+    let svc = PaymentService::new(SqliteStore::in_memory().unwrap(), DeadPort, "991000009");
     let payment = svc.submit(&request("wire-down"), 1_000).unwrap();
     assert_eq!(payment.state, PaymentState::Submitted);
 
@@ -126,7 +126,7 @@ fn transport_failure_leaves_payment_submitted_with_outbox_intact() {
 
 #[test]
 fn in_memory_store_honors_the_same_outbox_contract() {
-    let svc = PaymentService::new(InMemoryStore::new(), DeadPort, "021040078");
+    let svc = PaymentService::new(InMemoryStore::new(), DeadPort, "991000009");
     let payment = svc.submit(&request("mem-down"), 1_000).unwrap();
     assert_eq!(payment.state, PaymentState::Submitted);
 }
@@ -149,7 +149,7 @@ fn full_loop_runs_on_sqlite_against_the_simulator() {
     let svc = PaymentService::new(
         SqliteStore::in_memory().unwrap(),
         HttpSimPort::new(base_url),
-        "021040078",
+        "991000009",
     );
     let payment = svc.submit(&request("sqlite-e2e"), 1_000).unwrap();
     assert_eq!(payment.state, PaymentState::Settled);

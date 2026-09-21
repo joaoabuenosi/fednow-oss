@@ -13,7 +13,7 @@ toolchain (simulator, gateway, conformance suite).
 - **Profile validation, all violations at once**: XSD facets, ISO 20022
   cross-field rules and the FedNow Release 1 profile (FedNow message-id shape,
   ABA checksums, `FDN`/`CLRG`/`SLEV`/`USABA`, USD cent amounts, service
-  identifier `021150706`, direction-dependent BAH rules) — each issue with a
+  identifier `993000007`, direction-dependent BAH rules) — each issue with a
   stable machine-readable code. Calibrated against the 81 official Release 1
   sample messages.
 - **Builders** (`Pacs008Builder`, `Pacs002Builder`, `Pacs028Builder`,

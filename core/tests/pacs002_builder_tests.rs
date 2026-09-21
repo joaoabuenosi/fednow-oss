@@ -10,11 +10,11 @@ fn service_advice() -> Pacs002Builder {
     Pacs002Builder::new(
         "FEDNOWSIMADVICE000000000000001",
         "2026-07-02T15:30:05Z",
-        "20260702021040078BUILT0001",
+        "20260702991000009BUILT0001",
         "2026-07-02T15:30:00Z",
         "ACSC",
-        "021040078",
-        "091000019",
+        "991000009",
+        "992000008",
     )
     .original_end_to_end_identification("E2E-20260702-BUILT-0001")
     .original_uetr("8a562c67-ca16-48ba-b074-65581be6f001")
@@ -25,13 +25,13 @@ fn service_advice() -> Pacs002Builder {
 /// The accept/reject response a participant sends.
 fn participant_reject() -> Pacs002Builder {
     Pacs002Builder::new(
-        fednow_message_id("20260702", "091000019", "REJECT001"),
+        fednow_message_id("20260702", "992000008", "REJECT001"),
         "2026-07-02T15:30:03Z",
-        "20260702021040078BUILT0001",
+        "20260702991000009BUILT0001",
         "2026-07-02T15:30:00Z",
         "RJCT",
-        "091000019",
-        "021040078",
+        "992000008",
+        "991000009",
     )
     .original_end_to_end_identification("E2E-20260702-BUILT-0001")
     .reason_code("AC04")
@@ -66,7 +66,7 @@ fn built_fields_survive_the_round_trip() {
     let orig = tx.original_group_information.as_ref().unwrap();
     assert_eq!(
         orig.original_message_identification,
-        "20260702021040078BUILT0001"
+        "20260702991000009BUILT0001"
     );
     assert_eq!(orig.original_message_name_identification, "pacs.008.001.08");
     assert_eq!(
@@ -85,13 +85,13 @@ fn built_fields_survive_the_round_trip() {
 fn reject_without_reason_is_diagnosed_by_the_validator() {
     // The builder does not invent a reason; the validator names the gap.
     let xml = Pacs002Builder::new(
-        fednow_message_id("20260702", "091000019", "REJECT002"),
+        fednow_message_id("20260702", "992000008", "REJECT002"),
         "2026-07-02T15:30:03Z",
-        "20260702021040078BUILT0001",
+        "20260702991000009BUILT0001",
         "2026-07-02T15:30:00Z",
         "RJCT",
-        "091000019",
-        "021040078",
+        "992000008",
+        "991000009",
     )
     .to_xml()
     .unwrap();
@@ -108,11 +108,11 @@ fn unset_optionals_are_omitted_from_the_wire() {
     let xml = Pacs002Builder::new(
         "FEDNOWSIMADVICE000000000000002",
         "2026-07-02T15:30:05Z",
-        "20260702021040078BUILT0001",
+        "20260702991000009BUILT0001",
         "2026-07-02T15:30:00Z",
         "ACWP",
-        "021040078",
-        "091000019",
+        "991000009",
+        "992000008",
     )
     .to_xml()
     .unwrap();

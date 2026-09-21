@@ -22,7 +22,7 @@ fn parses_valid_fixture_into_typed_model() {
     let msg = &doc.fi_to_fi_customer_credit_transfer;
     assert_eq!(
         msg.group_header.message_identification,
-        "20260702021040078FIXTURE001"
+        "20260702991000009FIXTURE001"
     );
     assert_eq!(
         msg.group_header.settlement_information.settlement_method,
@@ -45,7 +45,7 @@ fn parses_valid_fixture_into_typed_model() {
         .clearing_system_member_identification
         .as_ref()
         .expect("fixture carries a routing number");
-    assert_eq!(debtor_agent_member.member_identification, "021040078");
+    assert_eq!(debtor_agent_member.member_identification, "991000009");
 }
 
 #[test]
@@ -67,7 +67,7 @@ fn malformed_xml_is_a_parse_error() {
 #[test]
 fn missing_required_element_is_a_parse_error() {
     // Removing GrpHdr/MsgId breaks required cardinality -> structural error.
-    let xml = VALID.replace("<MsgId>20260702021040078FIXTURE001</MsgId>", "");
+    let xml = VALID.replace("<MsgId>20260702991000009FIXTURE001</MsgId>", "");
     assert!(pacs008::parse(&xml).is_err());
 }
 
@@ -80,8 +80,8 @@ fn wrong_namespace_is_flagged() {
 #[test]
 fn msgid_longer_than_35_chars_violates_max35text() {
     let xml = VALID.replace(
-        "20260702021040078FIXTURE001",
-        "20260702021040078FIXTURE001XXXXXXXXX", // 36 chars
+        "20260702991000009FIXTURE001",
+        "20260702991000009FIXTURE001XXXXXXXXX", // 36 chars
     );
     assert!(codes(&xml).contains(&"xsd.msgid.length"));
 }
@@ -90,7 +90,7 @@ fn msgid_longer_than_35_chars_violates_max35text() {
 fn non_fednow_msgid_shape_violates_the_profile() {
     // Letter in the date part breaks CCYYMMDD + connection party + reference.
     let xml = VALID.replace(
-        "<MsgId>20260702021040078FIXTURE001</MsgId>",
+        "<MsgId>20260702991000009FIXTURE001</MsgId>",
         "<MsgId>M20260702FIXTURE00000001</MsgId>",
     );
     assert!(codes(&xml).contains(&"fednow.msgid.format"));
@@ -126,7 +126,7 @@ fn payment_type_information_without_ctgypurp_is_flagged() {
 #[test]
 fn missing_instructing_agent_is_flagged() {
     let xml = VALID.replace(
-        "<InstgAgt>\n        <FinInstnId>\n          <ClrSysMmbId>\n            <ClrSysId>\n              <Cd>USABA</Cd>\n            </ClrSysId>\n            <MmbId>021040078</MmbId>\n          </ClrSysMmbId>\n        </FinInstnId>\n      </InstgAgt>\n      ",
+        "<InstgAgt>\n        <FinInstnId>\n          <ClrSysMmbId>\n            <ClrSysId>\n              <Cd>USABA</Cd>\n            </ClrSysId>\n            <MmbId>991000009</MmbId>\n          </ClrSysMmbId>\n        </FinInstnId>\n      </InstgAgt>\n      ",
         "",
     );
     assert!(codes(&xml).contains(&"fednow.instgagt.required"));
@@ -135,8 +135,8 @@ fn missing_instructing_agent_is_flagged() {
 #[test]
 fn agent_without_usaba_scheme_is_flagged() {
     let xml = VALID.replace(
-        "<ClrSysId>\n              <Cd>USABA</Cd>\n            </ClrSysId>\n            <MmbId>091000019</MmbId>",
-        "<MmbId>091000019</MmbId>",
+        "<ClrSysId>\n              <Cd>USABA</Cd>\n            </ClrSysId>\n            <MmbId>992000008</MmbId>",
+        "<MmbId>992000008</MmbId>",
     );
     assert!(codes(&xml).contains(&"fednow.agent.usaba"));
 }
@@ -203,14 +203,14 @@ fn non_numeric_amount_violates_xsd_facets() {
 
 #[test]
 fn bad_aba_check_digit_is_flagged() {
-    // 021040079: last digit off by one -> checksum fails.
-    let xml = VALID.replace("021040078", "021040079");
+    // 991000008: last digit off by one -> checksum fails.
+    let xml = VALID.replace("991000009", "991000008");
     assert!(codes(&xml).contains(&"fednow.aba.checksum"));
 }
 
 #[test]
 fn non_nine_digit_routing_number_is_flagged() {
-    let xml = VALID.replace("021040078", "12345");
+    let xml = VALID.replace("991000009", "12345");
     assert!(codes(&xml).contains(&"fednow.aba.format"));
 }
 
@@ -245,7 +245,7 @@ fn settlement_method_other_than_clrg_is_flagged() {
 fn all_issues_are_collected_not_just_the_first() {
     let xml = VALID
         .replace(r#"Ccy="USD""#, r#"Ccy="EUR""#)
-        .replace("021040078", "021040079")
+        .replace("991000009", "991000008")
         .replace("<ChrgBr>SLEV</ChrgBr>", "<ChrgBr>SHAR</ChrgBr>");
     let found = codes(&xml);
     for expected in [

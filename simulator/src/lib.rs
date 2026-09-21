@@ -103,7 +103,7 @@ impl SimConfig {
     ///
     /// ```toml
     /// [scenarios]
-    /// "091000019" = { action = "reject", reason = "AC04" }
+    /// "992000008" = { action = "reject", reason = "AC04" }
     /// "999999992" = { action = "timeout" }
     /// ```
     pub fn from_toml(text: &str) -> Result<Self, String> {
@@ -549,7 +549,7 @@ fn mq_process_status_request(
 fn wrap_advice(advice_xml: &str, to_rtn: &str, biz_msg_idr: &str) -> String {
     let now_ts = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
     let bah = Head001Builder::new(
-        "021150706",
+        "993000007",
         to_rtn,
         truncate(biz_msg_idr, 35),
         "pacs.002.001.10",
@@ -606,8 +606,8 @@ fn advice_xml(
         }
     };
 
-    let instg = agent_rtn(&tx.instructing_agent).unwrap_or("021150706");
-    let instd = agent_rtn(&tx.instructed_agent).unwrap_or("021150706");
+    let instg = agent_rtn(&tx.instructing_agent).unwrap_or("993000007");
+    let instd = agent_rtn(&tx.instructed_agent).unwrap_or("993000007");
 
     let mut builder = Pacs002Builder::new(
         advice_id,
@@ -665,8 +665,8 @@ fn follow_up_advice_xml(doc: &pacs008::Document, status: &str) -> Result<String,
         hdr.message_identification.clone(),
         hdr.creation_date_time.clone(),
         status,
-        agent_rtn(&tx.instructing_agent).unwrap_or("021150706"),
-        agent_rtn(&tx.instructed_agent).unwrap_or("021150706"),
+        agent_rtn(&tx.instructing_agent).unwrap_or("993000007"),
+        agent_rtn(&tx.instructed_agent).unwrap_or("993000007"),
     )
     .original_end_to_end_identification(
         tx.payment_identification.end_to_end_identification.clone(),

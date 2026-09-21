@@ -8,12 +8,12 @@ use fednow_core::validate::validate_pacs008;
 
 fn full_builder() -> Pacs008Builder {
     Pacs008Builder::new(
-        fednow_message_id("20260702", "021040078", "BUILT0001"),
+        fednow_message_id("20260702", "991000009", "BUILT0001"),
         "2026-07-02T15:30:00Z",
         "E2E-20260702-BUILT-0001",
         125_000, // $1,250.00
-        "021040078",
-        "091000019",
+        "991000009",
+        "992000008",
     )
     .instruction_identification("INSTR-BUILT-0001")
     .uetr("8a562c67-ca16-48ba-b074-65581be6f001")
@@ -70,8 +70,8 @@ fn amounts_format_from_cents_without_floating_point() {
             "2026-07-02T15:30:00Z",
             "E2E-1",
             cents,
-            "021040078",
-            "091000019",
+            "991000009",
+            "992000008",
         )
         .to_xml()
         .unwrap();
@@ -85,12 +85,12 @@ fn amounts_format_from_cents_without_floating_point() {
 #[test]
 fn minimal_builder_omits_unset_elements_and_reports_missing_profile_fields() {
     let xml = Pacs008Builder::new(
-        fednow_message_id("20260702", "021040078", "BUILT0002"),
+        fednow_message_id("20260702", "991000009", "BUILT0002"),
         "2026-07-02T15:30:00Z",
         "E2E-20260702-BUILT-0002",
         5_000, // $50.00
-        "021040078",
-        "091000019",
+        "991000009",
+        "992000008",
     )
     .to_xml()
     .unwrap();
@@ -130,7 +130,7 @@ fn built_fields_survive_the_round_trip() {
 
     assert_eq!(
         msg.group_header.message_identification,
-        "20260702021040078BUILT0001"
+        "20260702991000009BUILT0001"
     );
     let tx = &msg.credit_transfer_transaction_information[0];
     assert_eq!(

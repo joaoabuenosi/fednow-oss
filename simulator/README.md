@@ -80,10 +80,10 @@ Header. MQ mode mirrors exactly that:
 # PUT: fire-and-forget send of a FedNowIncoming envelope → 202, empty body
 curl -s -X POST --data-binary @envelope.xml \
   -H "content-type: application/xml" \
-  http://localhost:8080/mq/participants/021040078/send
+  http://localhost:8080/mq/participants/991000009/send
 
 # GET: next FedNowOutgoing envelope from your receive queue (204 when empty)
-curl -s http://localhost:8080/mq/participants/021040078/receive
+curl -s http://localhost:8080/mq/participants/991000009/receive
 ```
 
 Differences from the HTTP dev mode, all deliberate:

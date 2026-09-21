@@ -26,7 +26,7 @@ fn start_sim() -> String {
 
 fn app(sim_url: &str, timeout_secs: i64) -> axum::Router {
     router(Arc::new(AppState {
-        service: PaymentService::new(InMemoryStore::new(), HttpSimPort::new(sim_url), "021040078"),
+        service: PaymentService::new(InMemoryStore::new(), HttpSimPort::new(sim_url), "991000009"),
         reconcile: ReconcileConfig {
             timeout_secs,
             backoff_secs: 0,
@@ -43,7 +43,7 @@ fn body_json(reference: &str, amount_cents: u64) -> String {
             "debtor_account": "123456789012",
             "creditor_name": "John Example Creditor",
             "creditor_account": "987654321000",
-            "creditor_agent_routing_number": "091000019",
+            "creditor_agent_routing_number": "992000008",
             "category_purpose": "CONS",
             "uetr": "8a562c67-ca16-48ba-b074-65581be6f001"
         }}"#

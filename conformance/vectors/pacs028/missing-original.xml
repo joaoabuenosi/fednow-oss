@@ -2,7 +2,7 @@
 <Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.028.001.03">
   <FIToFIPmtStsReq>
     <GrpHdr>
-      <MsgId>20260702021040078STATUSREQ01</MsgId>
+      <MsgId>20260702991000009STATUSREQ01</MsgId>
       <CreDtTm>2026-07-02T10:31:30-05:00</CreDtTm>
     </GrpHdr>
     <TxInf>
@@ -15,7 +15,7 @@
             <ClrSysId>
               <Cd>USABA</Cd>
             </ClrSysId>
-            <MmbId>021040078</MmbId>
+            <MmbId>991000009</MmbId>
           </ClrSysMmbId>
         </FinInstnId>
       </InstgAgt>
@@ -25,7 +25,7 @@
             <ClrSysId>
               <Cd>USABA</Cd>
             </ClrSysId>
-            <MmbId>091000019</MmbId>
+            <MmbId>992000008</MmbId>
           </ClrSysMmbId>
         </FinInstnId>
       </InstdAgt>

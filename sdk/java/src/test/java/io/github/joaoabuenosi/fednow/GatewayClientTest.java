@@ -24,7 +24,7 @@ class GatewayClientTest {
     private static final String PAYMENT_JSON =
             """
             {"idempotency_key":"k1","state":"%s",
-             "message_identification":"20260703021040078QS0001",
+             "message_identification":"20260703991000009QS0001",
              "end_to_end_identification":"QS0001","uetr":null,
              "queries_sent":0,"rejection_reason":null,"events":%d}
             """;
@@ -91,7 +91,7 @@ class GatewayClientTest {
                 .debtorAccount("123456789012")
                 .creditorName("John")
                 .creditorAccount("987654321000")
-                .creditorAgentRoutingNumber("091000019");
+                .creditorAgentRoutingNumber("992000008");
     }
 
     @Test

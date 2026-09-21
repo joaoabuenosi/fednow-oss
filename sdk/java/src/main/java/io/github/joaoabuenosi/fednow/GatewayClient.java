@@ -22,7 +22,7 @@ import java.util.List;
  *         .amountCents(125_000)
  *         .debtorName("Jane Example").debtorAccount("123456789012")
  *         .creditorName("John Example").creditorAccount("987654321000")
- *         .creditorAgentRoutingNumber("091000019")
+ *         .creditorAgentRoutingNumber("992000008")
  *         .build());
  * // ACK_PENDING: the answer is asynchronous (MQ semantics).
  * var settled = gw.waitFinal("order-2026-0001");
