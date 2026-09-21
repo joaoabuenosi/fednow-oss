@@ -99,9 +99,21 @@ Two things worth being explicit about:
 
 ### Practices
 
-- Third-party GitHub Actions are pinned to a commit SHA, not a tag.
+- Third-party GitHub Actions are pinned to a commit SHA, not a tag — in every
+  workflow, with a trailing `# <version>` comment recording which release the SHA
+  stands for. A pin is reviewed by reading the pinned commit's `action.yml` and
+  confirming it accepts the inputs the workflow passes, not by re-resolving the
+  version comment: some upstream tags (`dtolnay/rust-toolchain`'s `v1`,
+  `rustsec/audit-check`'s `v2`) are *moved* as new versions ship, so the comment
+  can drift from the tag while the pin itself stays exactly as intended.
 - Workflows declare `permissions: {}` at the top level; each job requests only the
-  scopes it needs.
+  scopes it needs, and each scope carries a comment saying which call needs it.
+- Both of the above are enforced on every CI run, not just asserted here:
+  [`.github/scripts/check-workflow-hardening.sh`](.github/scripts/check-workflow-hardening.sh)
+  fails the build if any workflow gains a `uses:` that is not a 40-character commit
+  SHA, or loses its top-level `permissions:` key.
+- Action pins are kept current by Dependabot, which bumps the SHA and rewrites the
+  version comment with it ([`.github/dependabot.yml`](.github/dependabot.yml)).
 - `cargo audit` runs on every lockfile change and daily
   ([`.github/workflows/audit.yml`](.github/workflows/audit.yml)).
 - [OpenSSF Scorecard](https://securityscorecards.dev/) runs weekly and on pushes to
