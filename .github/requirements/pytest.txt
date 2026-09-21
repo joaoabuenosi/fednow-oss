@@ -1,0 +1,49 @@
+# Hash-pinned build of pytest, for the Python SDK job in .github/workflows/ci.yml.
+#
+# WHY A FILE AND NOT `pip install pytest`:
+#
+# `pip install pytest` resolves against PyPI at run time. Whatever PyPI serves
+# under that name on the morning of the run is what executes inside CI, with no
+# record of what it was. That is the one unpinned dependency OpenSSF Scorecard's
+# Pinned-Dependencies check found in this repository, and the check is right:
+# every GitHub Action here is pinned to a commit SHA for exactly this reason,
+# and a pip install is no different.
+#
+# `pip install --require-hashes -r` refuses to install anything whose artifact
+# does not hash to a value listed below, refuses any requirement without an
+# `==` version, and refuses to resolve transitive dependencies that are not
+# themselves listed. So this file must contain the complete closure, which for
+# pytest on Python 3.12 is pytest plus iniconfig, packaging, pluggy and
+# pygments. (`colorama` is win32-only; `exceptiongroup` and `tomli` are only
+# required below Python 3.11. The CI job runs 3.12 on ubuntu-latest, so none of
+# the three is ever selected.)
+#
+# Both the wheel and the sdist hash are listed per package: pip checks the hash
+# of the artifact it actually downloads, and which one that is depends on the
+# runner.
+#
+# REGENERATING: bump the version, then take the sha256 digests straight from
+# PyPI's JSON API, e.g.
+#   curl -s https://pypi.org/pypi/pytest/json | jq -r '.releases["<version>"][] | "\(.filename) \(.digests.sha256)"'
+# Dependabot also watches this file (.github/dependabot.yml, pip ecosystem) and
+# rewrites the pins itself.
+
+pytest==9.1.1 \
+    --hash=sha256:37a86b45efb9a47a61a36449063e8e18d0cab3161329fc099eb21783169c4f0c \
+    --hash=sha256:1088fbde8f2b49d95a549a195707afa7a76a3ce9bcadc26b6d71f0ffda5fe313
+
+iniconfig==2.3.0 \
+    --hash=sha256:f631c04d2c48c52b84d0d0549c99ff3859c98df65b3101406327ecc7d53fbf12 \
+    --hash=sha256:c76315c77db068650d49c5b56314774a7804df16fee4402c1f19d6d15d8c4730
+
+packaging==26.3 \
+    --hash=sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c \
+    --hash=sha256:94edc256424af38762eb31306eed28beb9f0efc50a8837492c9d6fd6004aed79
+
+pluggy==1.6.0 \
+    --hash=sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746 \
+    --hash=sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3
+
+pygments==2.21.0 \
+    --hash=sha256:2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9 \
+    --hash=sha256:610ca751c9bc2492b38eb9a38a7fbc93edbbb2d7182edaf34e66ae493dee5c8c

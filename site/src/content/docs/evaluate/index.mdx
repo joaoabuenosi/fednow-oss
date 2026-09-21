@@ -60,6 +60,35 @@ artifacts were produced. Use {facts.releases.signingStartsAt} or later. The
 [security policy](/evaluate/security-policy/#verifying-a-release) has the full detail,
 including why checksums alone prove nothing about origin.
 
+<Aside type="note" title="v0.3.1 named its bundles differently">
+v0.3.1 published its signature bundles as `<asset>.cosign.bundle`. The bytes were already
+the standard Sigstore bundle format — only the extension was non-standard, which meant no
+tool looking for signatures by filename could find them. From the next release onwards the
+same bundles are named `<asset>.sigstore.json`. To verify v0.3.1, substitute
+`.cosign.bundle` for `.sigstore.json` in the command above; nothing else changes.
+</Aside>
+
+## Build provenance
+
+From the release after v0.3.1, each release also carries **SLSA build provenance** as
+`fednow-oss-<tag>.intoto.jsonl`. A signature tells you *this workflow, at this tag, signed
+these bytes*. Provenance is a machine-readable in-toto statement telling you *these bytes
+were produced by this workflow run, from this commit* — the form a policy engine can
+evaluate, rather than a human comparing a certificate identity by eye.
+
+It is checked with the [GitHub CLI](https://cli.github.com/) rather than cosign:
+
+```console
+$ gh attestation verify "fednow-oss-$TAG-x86_64-linux.tar.gz" \
+    --repo joaoabuenosi/fednow-oss \
+    --signer-workflow joaoabuenosi/fednow-oss/.github/workflows/release.yml
+```
+
+`--signer-workflow` is the load-bearing flag: `--repo` on its own would accept an
+attestation from any workflow in the repository. Add `--bundle fednow-oss-$TAG.intoto.jsonl`
+to check against the downloaded asset instead of GitHub's attestation API. The
+[security policy](/evaluate/security-policy/#verifying-build-provenance) has both forms.
+
 ## Software Bill of Materials
 
 Every signed release ships two SBOMs of the same build:

@@ -79,9 +79,14 @@ MQ technical envelope.
 
 See [SECURITY.md](SECURITY.md) for the vulnerability disclosure process, and for the
 supply chain: releases are signed keyless with [Sigstore](https://www.sigstore.dev/)
-(no private key, no signing secret), ship a CycloneDX and an SPDX SBOM, and can be
-verified with a single `cosign verify-blob` — the exact command is in
+(no private key, no signing secret), carry [SLSA](https://slsa.dev/) build provenance,
+ship a CycloneDX and an SPDX SBOM, and can be verified with a single
+`cosign verify-blob` or `gh attestation verify` — the exact commands are in
 [SECURITY.md](SECURITY.md#verifying-a-release).
+
+[CodeQL](https://codeql.github.com/) runs on every pull request over all four languages
+here, `cargo audit` runs daily, and the ISO 20022 parsers are fuzzed nightly with
+[`cargo-fuzz`](fuzz/README.md).
 
 ## License
 

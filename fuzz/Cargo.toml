@@ -1,0 +1,39 @@
+# A separate crate, deliberately outside the workspace (see `exclude` in the
+# root Cargo.toml and the empty `[workspace]` table at the bottom of this file).
+#
+# cargo-fuzz builds with a nightly toolchain and `-Zsanitizer=address`. Keeping
+# it out of the workspace means `cargo build`, `cargo clippy` and `cargo test`
+# on stable never try to compile libfuzzer-sys, so a contributor without a
+# nightly toolchain is not blocked by a directory they may never touch.
+[package]
+name = "fednow-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+license = "Apache-2.0"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+fednow-core = { path = "../core" }
+
+# `test = false` / `doc = false`: these binaries have no `#[test]`s and no
+# rustdoc; without it `cargo fuzz` builds a test harness it then cannot link
+# against libFuzzer's own `main`.
+[[bin]]
+name = "pacs008_parse_validate"
+path = "fuzz_targets/pacs008_parse_validate.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pacs002_parse_validate"
+path = "fuzz_targets/pacs002_parse_validate.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

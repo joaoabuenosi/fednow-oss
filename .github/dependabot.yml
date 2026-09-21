@@ -29,3 +29,63 @@ updates:
         update-types:
           - minor
           - patch
+
+  # sdk/java was covered by nothing until now, which is how jackson-databind sat
+  # at 2.18.2 while nine advisories accumulated against it and the jackson-core
+  # it pulls in transitively — the whole of this repository's OpenSSF Scorecard
+  # Vulnerabilities finding. A manifest no update tool watches is a manifest that
+  # only gets looked at when something external notices.
+  - package-ecosystem: maven
+    directory: /sdk/java
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  # Same gap, same reason: site/package-lock.json is scanned by OSV like every
+  # other lockfile here. `npm run check` already fails the site build on a
+  # high-severity advisory in a runtime dependency; this is what keeps that from
+  # being the first warning anyone gets.
+  - package-ecosystem: npm
+    directory: /site
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  # A pinned base image is a frozen base image. gateway/Dockerfile and
+  # simulator/Dockerfile now name their bases by digest, which is what makes
+  # them reproducible and also what stops them from ever picking up a Debian
+  # security update on their own. These two entries are the other half of that
+  # trade: Dependabot rewrites the digest and the tag comment beside it.
+  #
+  # Both stages must stay on the same Debian release — see the comment at the
+  # top of either Dockerfile for what happens when they drift apart.
+  - package-ecosystem: docker
+    directory: /gateway
+    schedule:
+      interval: weekly
+      day: monday
+
+  - package-ecosystem: docker
+    directory: /simulator
+    schedule:
+      interval: weekly
+      day: monday
+
+  # The hash-pinned pytest build used by the Python SDK job. Same reasoning as
+  # the Docker digests: pinning by artifact hash means nothing updates until
+  # something updates it.
+  - package-ecosystem: pip
+    directory: /.github/requirements
+    schedule:
+      interval: weekly
+      day: monday

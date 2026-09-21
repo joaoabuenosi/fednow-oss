@@ -58,8 +58,25 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
-      - name: Install pytest + the SDK (as a user would)
-        run: pip install pytest ./sdk/python
+      # Two installs, both pinned, because `pip install pytest ./sdk/python`
+      # was this repository's only unpinned dependency (OpenSSF Scorecard,
+      # Pinned-Dependencies). They pin differently because they are different
+      # things: pytest comes from PyPI and is pinned by artifact hash; the SDK
+      # is this commit's own source and is pinned by being built from it.
+      - name: Install pytest (hash-pinned)
+        run: pip install --require-hashes -r .github/requirements/pytest.txt
+
+      # Still "as a user would": a wheel, built from sdk/python by the same
+      # PEP 517 backend PyPI would use, then installed. Building it here rather
+      # than installing the directory in place keeps the packaging itself under
+      # test — a broken `[tool.setuptools.packages.find]` fails at this step
+      # instead of surfacing as a mysterious ImportError later.
+      - name: Build the SDK wheel
+        run: python -m pip wheel --no-deps --wheel-dir /tmp/sdk-wheel ./sdk/python
+
+      - name: Install the SDK wheel
+        run: pip install /tmp/sdk-wheel/*.whl
+
       - name: Build the stack
         run: cargo build -p fednow-sim -p fednow-gateway
       - name: Launch sim + gateway (MQ mode, fast reconcile timings)

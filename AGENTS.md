@@ -41,9 +41,25 @@ FEDNOW_GW_URL=http://localhost:8090 python -m pytest sdk/python -q              
 FEDNOW_GW_URL=http://localhost:8090 mvn -q -B -f sdk/java/pom.xml test
 ```
 
-`audit.yml` runs `cargo audit` on every lockfile change and daily. Dependabot
-opens weekly PRs (Mondays): cargo minor/patch are grouped, majors come alone;
+`audit.yml` runs `cargo audit` on every lockfile change and daily. `codeql.yml`
+runs CodeQL on every PR and push to `main` over Rust, Python, Java and the
+workflow files. `fuzz.yml` runs the `cargo-fuzz` targets nightly; to run one
+locally (nightly toolchain, see [`fuzz/README.md`](fuzz/README.md)):
+
+```sh
+./fuzz/seed-corpus.sh
+cargo +nightly fuzz run pacs008_parse_validate -- -max_total_time=120
+```
+
+Dependabot opens weekly PRs (Mondays) for cargo, GitHub Actions, maven
+(`sdk/java`), npm (`site`), docker (both Dockerfiles) and pip
+(`.github/requirements`): cargo minor/patch are grouped, majors come alone;
 triage with `/esteira:deps`.
+
+Pinned by hash and therefore only updated by something that updates them: the
+Dockerfile base images (by digest), `.github/requirements/pytest.txt` (by
+artifact hash) and every action `uses:` (by commit SHA). Both Dockerfile stages
+must stay on the same Debian release.
 
 ## Rules
 

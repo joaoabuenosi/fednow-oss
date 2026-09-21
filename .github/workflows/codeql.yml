@@ -1,0 +1,83 @@
+name: CodeQL
+
+# Static analysis, and the reason this repository scored 0 on OpenSSF
+# Scorecard's SAST check: `cargo clippy` and `cargo audit` are real checks, but
+# Scorecard only counts a recognised SAST tool running on the commits
+# themselves, and neither of those is one.
+#
+# Four languages, because all four are in this repository and a reviewer who is
+# told "we run SAST" should not discover it covered one of them:
+#
+#   rust          the core crates, the gateway, the simulator, the conformance
+#                 runner — everything that parses untrusted ISO 20022 XML.
+#   python        sdk/python.
+#   java-kotlin   sdk/java. (There is no Kotlin here; `java-kotlin` is simply
+#                 the name CodeQL gives the JVM language pack.)
+#   actions       the workflow files in this directory. CodeQL analyses them
+#                 for injection through untrusted `github.*` context values and
+#                 for unpinned action references — the same class of problem
+#                 .github/scripts/check-workflow-hardening.sh guards by hand.
+#
+# Rust is not a preview language: CodeQL's Rust support went generally
+# available in October 2025 (CodeQL 2.23.3), alongside build-mode `none`.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Default to nothing; each job asks for exactly what it needs.
+permissions: {}
+
+# A second push to a pull request makes the first analysis irrelevant. Four
+# language jobs per run is enough work not to let superseded runs pile up.
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      # Upload the analysis results to the code scanning tab. This is the only
+      # write scope any job here needs.
+      security-events: write
+      # actions/checkout.
+      contents: read
+      # Deliberately NOT requested: `actions: read`. codeql-action needs it only
+      # to read workflow run metadata in *private* repositories; this repository
+      # is public, so asking for it would widen the token for nothing.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: rust
+          - language: python
+          - language: java-kotlin
+          - language: actions
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # CodeQL reads the tree; it never pushes to it.
+          persist-credentials: false
+
+      # `build-mode: none` for every language here. It is the only mode
+      # interpreted languages accept, and for Rust and Java it means CodeQL
+      # builds its database straight from source rather than intercepting a
+      # compiler — no cargo build, no Maven run, and so no third-party build
+      # script executing inside a job that holds `security-events: write`.
+      # (`none` is not available for Kotlin, Swift or Go. None of those are
+      # here; if Kotlin ever lands in sdk/, this mode has to change with it.)
+      - name: Initialise CodeQL
+        uses: github/codeql-action/init@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+
+      - name: Analyse
+        uses: github/codeql-action/analyze@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
+        with:
+          category: /language:${{ matrix.language }}
