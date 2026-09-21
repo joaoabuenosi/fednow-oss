@@ -41,6 +41,16 @@ FEDNOW_GW_URL=http://localhost:8090 python -m pytest sdk/python -q              
 FEDNOW_GW_URL=http://localhost:8090 mvn -q -B -f sdk/java/pom.xml test
 ```
 
+`ci.yml` also has two gated jobs that run only when a diff reaches them: **`site`**
+(build + trademark/privacy checks) and **`docker`**, which runs the quickstart —
+`docker compose build`, `up -d`, then both services must answer `/healthz` on
+their published ports — whenever `gateway/**`, `simulator/**`, `core/**`,
+`Cargo.toml`/`Cargo.lock`, `docker-compose.yml` or `ci.yml` changes. That job is
+the only thing that proves a binary built in the Dockerfile's build stage can
+actually start in its runtime stage; `cargo test` runs against the runner's
+libraries, not the image's. It is why **both Dockerfile stages must stay on the
+same Debian release** — a glibc skew builds cleanly and dies at startup.
+
 `audit.yml` runs `cargo audit` on every lockfile change and daily. `codeql.yml`
 runs CodeQL on every PR and push to `main` over Rust, Python, Java and the
 workflow files. `fuzz.yml` runs the `cargo-fuzz` targets nightly; to run one

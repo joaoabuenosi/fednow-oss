@@ -132,6 +132,16 @@ All notable changes to this project are documented here. The format follows
 
   First run: 4.6 million executions across the two targets, no crashes.
 
+- **CI runs the Docker quickstart.** A new gated `docker` job builds both images,
+  brings the compose stack up and requires each service to answer `/healthz` on
+  its published port, whenever a change reaches `gateway/`, `simulator/`,
+  `core/`, the lockfile, `docker-compose.yml` or the CI workflow. Nothing else
+  tested this: the Rust jobs run the binaries against the *runner's* libraries,
+  never against the ones inside the image that ships them, so a build stage and
+  a runtime stage on different Debian releases produced an image that built
+  perfectly and a container that died on its first instruction. Nothing is
+  pushed and no registry is touched — the token is `contents: read`.
+
 ## [0.3.1] — 2026-09-21
 
 A release-pipeline fix. No library, gateway, simulator or conformance code
