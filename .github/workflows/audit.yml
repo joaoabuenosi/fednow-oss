@@ -19,16 +19,51 @@ on:
     - cron: "37 6 * * *"
   workflow_dispatch:
 
-permissions:
-  contents: read
-  issues: write
+# Default to nothing; each job asks for exactly what it needs.
+permissions: {}
 
+# rustsec/audit-check reports in one of two ways, chosen by the event that
+# triggered it (src/main.ts, at the pinned commit): on a `schedule` event it
+# opens an issue, on anything else it writes a check run. The two need
+# different token scopes, so they are two jobs — the daily scan is the only
+# one that can open an issue, and a run triggered from a pull request cannot,
+# no matter what the action does.
 jobs:
+  scheduled-audit:
+    name: cargo audit (daily, opens an issue)
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      # actions/checkout reads the tree.
+      contents: read
+      # The scheduled path calls reporter.reportIssues() to file the advisory
+      # as a repository issue. This is the only job here that gets this.
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # This job only reads the tree; it never pushes.
+          persist-credentials: false
+      - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
   audit:
     name: cargo audit
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
+    permissions:
+      # actions/checkout reads the tree.
+      contents: read
+      # Every non-schedule path calls reporter.reportCheck(), which creates a
+      # check run against the commit. No issues: write — a pull_request run
+      # has no business filing issues.
+      checks: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: rustsec/audit-check@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # This job only reads the tree; it never pushes.
+          persist-credentials: false
+      - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
