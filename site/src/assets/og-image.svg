@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Pacsmith social preview — SOURCE FILE. 1200x630, the size Open Graph and
+  Twitter/X expect for a large summary card.
+
+  TRADEMARK RULE (site/README.md): this artwork is entirely original. It uses
+  the project's own forge-ember palette, carries no payment operator's mark,
+  logo, imagery or colours. The Federal Reserve's service mark appears nowhere
+  in it: not in the artwork, not in this source, and not in the alt text that
+  ships with it. `npm run check` greps this file, the rendered PNG and every
+  og:/twitter: tag for the literal mark, so it cannot creep back in.
+
+  The served image is public/og-image.png. After editing this file, re-render
+  it with the headless Chromium command in site/README.md ("Social preview").
+
+  Text is set in a metric-compatible sans stack (Helvetica, Arial, Liberation
+  Sans), so the render is stable across the machines likely to produce it.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="Pacsmith — an open-source ISO 20022 toolkit for US instant payments">
+  <title>Pacsmith — an open-source ISO 20022 toolkit for US instant payments</title>
+
+  <defs>
+    <!-- Ember glow: the forge half of the name, bottom left, clear of the text. -->
+    <radialGradient id="ember" cx="0" cy="1" r="1.05">
+      <stop offset="0" stop-color="#c2560f" stop-opacity="0.42"/>
+      <stop offset="0.45" stop-color="#c2560f" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#c2560f" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="rule" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffb37a"/>
+      <stop offset="1" stop-color="#c2560f"/>
+    </linearGradient>
+    <linearGradient id="anvil" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffb37a"/>
+      <stop offset="1" stop-color="#c2560f"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Canvas -->
+  <rect width="1200" height="630" fill="#0f1115"/>
+  <rect width="1200" height="630" fill="url(#ember)"/>
+
+  <!-- Hairline frame, inset. -->
+  <rect x="28" y="28" width="1144" height="574" rx="18" fill="none" stroke="#2a2f3a" stroke-width="2"/>
+
+  <!-- Mark: an anvil, struck. Original geometry; no operator's device. -->
+  <g transform="translate(902 232)">
+    <circle cx="0" cy="0" r="132" fill="#151922" stroke="#2a2f3a" stroke-width="2"/>
+
+    <!-- Sparks off the face. -->
+    <g fill="#ffb37a">
+      <circle cx="-46" cy="-74" r="5.5" opacity="0.95"/>
+      <circle cx="-12" cy="-92" r="4" opacity="0.75"/>
+      <circle cx="26" cy="-70" r="6.5" opacity="0.9"/>
+      <circle cx="62" cy="-86" r="3.5" opacity="0.6"/>
+      <circle cx="4" cy="-58" r="3" opacity="0.55"/>
+    </g>
+
+    <!-- Horn left, face across the top, waist, splayed base. -->
+    <path fill="url(#anvil)" d="M -96 -30 L -30 -30 L -30 -40 L 84 -40 L 96 -18 L 40 -18 L 30 14 L 46 14 L 62 52 L -62 52 L -46 14 L -30 14 L -40 -18 L -96 -18 Z"/>
+  </g>
+
+  <!-- Wordmark and tagline -->
+  <g font-family="Helvetica, Arial, 'Liberation Sans', sans-serif">
+    <text x="92" y="286" fill="#ffffff" font-size="128" font-weight="700" letter-spacing="-3">Pacsmith</text>
+
+    <rect x="96" y="326" width="132" height="7" rx="3.5" fill="url(#rule)"/>
+
+    <text x="92" y="404" fill="#c9cfdb" font-size="41" font-weight="400">Open-source ISO 20022 toolkit</text>
+    <text x="92" y="456" fill="#c9cfdb" font-size="41" font-weight="400">for US instant payments</text>
+
+    <text x="92" y="552" fill="#8b93a3" font-size="25" font-weight="500" letter-spacing="1.6">Apache-2.0  ·  signed releases  ·  SBOMs</text>
+  </g>
+</svg>

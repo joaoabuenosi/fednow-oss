@@ -15,9 +15,16 @@
 #      that institution participating or endorsing. Every example identifier in
 #      this project is fictitious and lives in the unassignable 99 block; see
 #      docs/handbook/README.md.
+#   4. The social preview image is metadata too, and it travels further than any
+#      page: an og:image is what gets pasted into a chat, a timeline or a deck,
+#      usually with none of the surrounding text. The mark must therefore be
+#      absent from the og:/twitter: tags, from the alt text they carry, and from
+#      the bytes of the image files themselves. Check [1/8] covers og:/twitter:
+#      tags only while they sit inside <head>; [7/8] and [8/8] cover the rest,
+#      which is the half a <head> grep cannot see.
 #
-# It also checks that the mark is absent from URLs/slugs, and that no analytics
-# or cookie-setting script slipped in.
+# It also checks that the mark is absent from URLs/slugs, and that the only
+# analytics on the site is the cookieless first-party one the pages claim.
 #
 # Usage: npm run build && npm run check
 set -uo pipefail
@@ -46,7 +53,7 @@ status=0
 # ---------------------------------------------------------------- 1. <head> --
 # awk with RS="</head>" yields everything before the first </head>: the doctype,
 # the <html> tag and the whole <head>. grep then looks for the mark in it.
-echo "[1/6] No \"FedNow\" inside <head> (metatags, OG/Twitter, JSON-LD, canonical)"
+echo "[1/8] No \"FedNow\" inside <head> (metatags, OG/Twitter, JSON-LD, canonical)"
 head_hits=0
 for page in "${PAGES[@]}"; do
   if awk 'BEGIN { RS = "</head>" } NR == 1' "$page" | grep -i -q "$MARK"; then
@@ -64,7 +71,7 @@ fi
 echo
 
 # --------------------------------------------------------------- 2. footer --
-echo "[2/6] Non-affiliation footer present on every page"
+echo "[2/8] Non-affiliation footer present on every page"
 missing=0
 for page in "${PAGES[@]}"; do
   if ! grep -qF "$FOOTER" "$page" || ! grep -qF "$FOOTER_MARK" "$page"; then
@@ -81,8 +88,13 @@ fi
 echo
 
 # ----------------------------------------------------------------- 3. URLs --
-echo "[3/6] No \"FedNow\" in URLs or slugs"
-if slugs=$(find "$DIST" -type f | grep -i "$MARK"); then
+# Paths are matched with the $DIST prefix STRIPPED. Without that, running the
+# check against an absolute path fails on the path itself — this repository is
+# called fednow-oss, so `check-build.sh /home/me/fednow-oss/site/dist` would
+# report all 18 pages as violations. What is being checked is the published URL
+# space, which is what is left after the prefix comes off.
+echo "[3/8] No \"FedNow\" in URLs or slugs"
+if slugs=$(find "$DIST" -type f | sed "s|^$DIST/||" | grep -i "$MARK"); then
   echo "      FAIL: built paths contain the mark:"
   echo "$slugs" | sed 's/^/             /'
   status=1
@@ -92,20 +104,105 @@ fi
 echo
 
 # ------------------------------------------------------------ 4. analytics --
-echo "[4/6] No analytics or third-party trackers"
-if trackers=$(grep -rl -E 'googletagmanager|google-analytics|gtag\(|plausible\.io|analytics\.js|/_vercel/insights' "$DIST" 2>/dev/null); then
-  echo "      FAIL: tracker references found:"
+# The site carries exactly one analytics script: Vercel Web Analytics, loaded
+# first-party from /_vercel/insights/script.js. Three things have to hold, and
+# all three are things a future edit could quietly break:
+#
+#   a. No third-party tracker. Anything that reaches a host other than this one
+#      breaks the "no third-party requests" half of the claim on /evaluate/.
+#   b. The insights script stays FIRST-PARTY — a root-relative path, never an
+#      absolute URL and never va.vercel-scripts.com, which is the debug script
+#      @vercel/analytics swaps in outside production.
+#   c. No cookies, at all, from anything. And no browser storage beyond the two
+#      keys below, which are declared rather than discovered: Starlight keeps
+#      the visitor's light/dark choice in localStorage and which sidebar groups
+#      are open in sessionStorage. Both are UI preferences that never leave the
+#      browser and identify nobody — but the site says so out loud on /about/
+#      rather than rounding "no tracking" up to "no storage", so a third key
+#      appearing means either the prose is now wrong or something was added
+#      that should not have been. Either way, that is a build failure.
+#
+# And the reason this check exists in this shape at all: /evaluate/, /about/ and
+# robots.txt each make a specific, narrow privacy claim. The last block below
+# fails the build if the analytics script is present while a page still carries
+# the old "loads no analytics" wording — the site must never make a false claim,
+# and the way that would happen is by adding the script and forgetting the prose
+# (or removing the prose and forgetting the script).
+echo "[4/8] Analytics: first-party and cookieless, or nothing at all"
+
+third_party='googletagmanager|google-analytics|gtag\(|plausible\.io|analytics\.js|segment\.com|hotjar|matomo|va\.vercel-scripts\.com'
+if trackers=$(grep -rlE "$third_party" "$DIST" --include='*.html' 2>/dev/null); then
+  echo "      FAIL: third-party tracker references found:"
   echo "$trackers" | sed 's/^/             /'
   status=1
 else
-  echo "      PASS: none found (see the TODO in astro.config.mjs for cookieless analytics)"
+  echo "      PASS: no third-party tracker referenced"
+fi
+
+# Any reference to the insights endpoint must be root-relative, i.e. served from
+# this origin. An absolute URL would make it a third-party request.
+if offsite=$(grep -rhoE '(src|href)="[^"]*_vercel/insights[^"]*"' "$DIST" --include='*.html' 2>/dev/null \
+             | sort -u | grep -v '="/_vercel/insights'); then
+  echo "      FAIL: insights loaded from somewhere other than this origin:"
+  echo "$offsite" | sed 's/^/             /'
+  status=1
+else
+  echo "      PASS: every /_vercel/insights reference is first-party (root-relative)"
+fi
+
+if cookies=$(grep -rl 'document\.cookie' "$DIST" --include='*.html' 2>/dev/null); then
+  echo "      FAIL: a script touches document.cookie:"
+  echo "$cookies" | sed 's/^/             /'
+  status=1
+else
+  echo "      PASS: nothing on any page touches document.cookie"
+fi
+
+# Storage keys the site declares on /about/. Anything else is undeclared.
+DECLARED_STORAGE_KEYS='starlight-theme sl-sidebar-state'
+key_pattern="$(echo "$DECLARED_STORAGE_KEYS" | tr ' ' '|')"
+storage_ok=1
+for key in $DECLARED_STORAGE_KEYS; do
+  grep -rqF "$key" "$DIST" --include='*.html' 2>/dev/null || {
+    echo "      NOTE: declared storage key \"$key\" is no longer used — /about/ can drop it"
+  }
+done
+# The claim on /about/ names these two and no others. Only string literals are
+# matched: the bundler minifies key names into variables in plenty of places,
+# and a bare identifier says nothing about what is actually stored. A literal
+# key that is not on the list is the case worth failing on, and it is also the
+# only way a NEW piece of stored state realistically arrives.
+if stray=$(grep -rhoE "(local|session)Storage\.(set|get)Item\(([\`\"'])[A-Za-z0-9_.-]+\2" "$DIST" --include='*.html' 2>/dev/null \
+           | grep -oE '[A-Za-z0-9_.-]+.$' | sed 's/.$//' | sort -u | grep -vE "^($key_pattern)$"); then
+  echo "      FAIL: undeclared browser-storage key(s) — /about/ names only: $DECLARED_STORAGE_KEYS"
+  echo "$stray" | sed 's/^/             /'
+  storage_ok=0
+  status=1
+fi
+[ "$storage_ok" -eq 1 ] && echo "      PASS: browser storage limited to the declared UI-preference keys ($DECLARED_STORAGE_KEYS)"
+
+# The claim and the code must agree, in whichever direction they disagree.
+STALE_CLAIM='loads no analytics'
+analytics_present=0
+grep -rqF '/_vercel/insights/script.js' "$DIST" --include='*.html' 2>/dev/null && analytics_present=1
+stale_pages=$(grep -rlF "$STALE_CLAIM" "$DIST" --include='*.html' 2>/dev/null || true)
+
+if [ "$analytics_present" -eq 1 ] && [ -n "$stale_pages" ]; then
+  echo "      FAIL: analytics is loaded, but these pages still claim the site \"$STALE_CLAIM\":"
+  echo "$stale_pages" | sed 's/^/             /'
+  echo "             Fix the prose (/evaluate/, /about/, robots.txt) — do not ship a false claim."
+  status=1
+elif [ "$analytics_present" -eq 0 ] && [ -z "$stale_pages" ]; then
+  echo "      PASS: no analytics loaded, and no page claims otherwise"
+else
+  echo "      PASS: the analytics the pages describe is the analytics they load"
 fi
 echo
 
 # ------------------------------------------------- 5. unresolved MDX exprs --
 # MDX does not evaluate `{...}` in a markdown link destination; such a link is
 # emitted verbatim and URL-encoded (%7B...%7D). Catch it rather than ship it.
-echo "[5/6] No unresolved MDX expressions in links"
+echo "[5/8] No unresolved MDX expressions in links"
 if broken=$(grep -rlE 'href="%7B|href="\{|src="%7B' "$DIST" --include='*.html' 2>/dev/null); then
   echo "      FAIL: unevaluated expressions in href/src:"
   echo "$broken" | sed 's/^/             /'
@@ -121,7 +218,7 @@ echo
 # 0210xxxxx pair sit in an assignable New York range with valid check digits,
 # which is exactly what makes them unsafe to publish. Replacements all begin
 # with 99, a block the ABA assigns to nobody.
-echo "[6/6] No known-real ABA routing numbers in the published output"
+echo "[6/8] No known-real ABA routing numbers in the published output"
 DENYLIST="091000019 021040078 021150706 021040079 091000018"
 rtn_hits=0
 for rtn in $DENYLIST; do
@@ -137,6 +234,101 @@ else
   echo "      FAIL: $rtn_hits retired routing number(s) published"
   status=1
 fi
+echo
+
+# ------------------------------------------- 7. social / image metadata --
+# Check [1/8] greps <head>, which is where these tags live today — but "today"
+# is doing a lot of work in that sentence. An og:image can be emitted from a
+# component, a <noscript> block or an integration that appends to <body>, and
+# alt text is never in <head> at all. Both are machine-readable metadata under
+# the mark's terms, so both are checked wherever they appear in the document.
+echo "[7/8] No \"FedNow\" in og:/twitter: metadata or in any image alt text"
+meta_hits=0
+for page in "${PAGES[@]}"; do
+  # Whole-document, not just <head>: every og:/twitter: meta tag, and every
+  # alt="" on any element. -o keeps the report to the offending tag.
+  if offenders=$(grep -ioE '<meta[^>]*(property|name)="(og|twitter):[^"]*"[^>]*>|alt="[^"]*"' "$page" 2>/dev/null \
+                 | grep -i "$MARK"); then
+    echo "      FAIL: ${page#"$DIST"/}"
+    echo "$offenders" | sed 's/^/             /'
+    meta_hits=$((meta_hits + 1))
+  fi
+done
+if [ "$meta_hits" -eq 0 ]; then
+  echo "      PASS: 0 of ${#PAGES[@]} pages carry the mark in a social tag or alt text"
+else
+  echo "      FAIL: $meta_hits page(s) carry the mark in a social tag or alt text"
+  status=1
+fi
+
+# The tags are worth nothing if they point at an image that is not there: a
+# missing og:image is a bare text card, which is the thing this replaced.
+og_refs=$(grep -rhoE '<meta[^>]*property="og:image"[^>]*content="[^"]*"' "$DIST" --include='*.html' 2>/dev/null \
+          | grep -oE 'content="[^"]*"' | cut -d'"' -f2 | sort -u)
+if [ -z "$og_refs" ]; then
+  echo "      FAIL: no og:image tag found on any page"
+  status=1
+else
+  og_missing=0
+  for url in $og_refs; do
+    # The tag must be absolute (crawlers do not resolve relative og:image), and
+    # the file it names must exist in the build.
+    case "$url" in
+      http://*|https://*) ;;
+      *) echo "      FAIL: og:image \"$url\" is not an absolute URL"; og_missing=$((og_missing + 1)); continue ;;
+    esac
+    file="$DIST/${url#*://*/}"
+    if [ ! -f "$file" ]; then
+      echo "      FAIL: og:image \"$url\" is not in the build (looked for ${file#"$DIST"/})"
+      og_missing=$((og_missing + 1))
+    fi
+  done
+  if [ "$og_missing" -eq 0 ]; then
+    echo "      PASS: every og:image is an absolute URL pointing at a file in the build"
+  else
+    status=1
+  fi
+fi
+echo
+
+# -------------------------------------------- 8. the preview image itself --
+# The last place the mark could hide is inside the artwork: rendered as text in
+# the picture, left in the SVG source, or carried in a PNG text chunk (tEXt,
+# iTXt and zTXt are all plain enough to grep, and Chromium writes none of them
+# — so any hit is something a later tool added). This greps the bytes of both
+# files. A PNG is binary, hence -a.
+#
+# verify-og.mjs then re-reads the PNG: right dimensions for a large summary
+# card, and artwork reaching the bottom edge rather than a silently cropped
+# render. Neither is visible in a diff, and a wrong social card is only ever
+# noticed by the person you were trying to impress.
+echo "[8/8] The social preview image carries no mark, and is a valid 1200x630 card"
+OG_SVG="src/assets/og-image.svg"
+OG_PNG="$DIST/og-image.png"
+img_status=0
+
+for f in "$OG_SVG" "$OG_PNG"; do
+  if [ ! -f "$f" ]; then
+    echo "      FAIL: $f is missing"
+    img_status=1
+  elif grep -a -i -q "$MARK" "$f"; then
+    echo "      FAIL: $f contains the mark"
+    img_status=1
+  fi
+done
+if [ "$img_status" -eq 0 ]; then
+  echo "      PASS: neither $OG_SVG nor ${OG_PNG#"$DIST"/} contains the mark"
+fi
+
+if [ -f "$OG_PNG" ]; then
+  if out=$(node scripts/verify-og.mjs "$OG_PNG" 2>&1); then
+    echo "      PASS: ${out#verify-og: }"
+  else
+    echo "$out" | sed 's/^/      /'
+    img_status=1
+  fi
+fi
+[ "$img_status" -eq 0 ] || status=1
 echo
 
 if [ "$status" -eq 0 ]; then

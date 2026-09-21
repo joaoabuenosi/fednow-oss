@@ -40,6 +40,32 @@ Edit the source file, never the generated page. The sync also:
 Hand-authored pages: `index.mdx` (home), `evaluate/index.mdx`, `evaluate/licence.md`,
 `about.md`.
 
+## Social preview
+
+`src/assets/og-image.svg` is the source artwork for the Open Graph / Twitter-X card;
+`public/og-image.png` is what crawlers actually fetch, because none of them render SVG.
+Both are committed, and `scripts/render-og.sh` is what keeps them in step:
+
+```sh
+bash scripts/render-og.sh                        # finds a chromium on PATH
+CHROMIUM=/path/to/chrome bash scripts/render-og.sh
+```
+
+It is deliberately **not** part of `npm run build` — it needs a Chromium binary, which the
+site does not otherwise depend on. Edit the SVG, re-run it, commit the regenerated PNG.
+
+The artwork is original: the project's wordmark, an anvil, and the forge-ember accent from
+`custom.css`. No payment operator's mark, logo, imagery or colours appear in it, and the
+FedNow mark appears in neither the image nor its alt text — the alt text is the one piece
+of image metadata a crawler reads, so it is held to the same rule as `<title>`. The
+absolute URL and the alt text both live in `site.config.mjs` (`OG_IMAGE`, `OG_IMAGE_ALT`),
+and the tags are emitted from `head` in `astro.config.mjs`.
+
+Two failure modes are checked rather than trusted, because neither shows up in a diff:
+a render cropped by Chromium's "new" headless mode (which lays out in a viewport shorter
+than `--window-size`), and a PNG that is not 1200x630. `scripts/verify-og.mjs` re-reads the
+committed PNG and fails on either — from `render-og.sh` and again from `npm run check`.
+
 ## Trademark rules
 
 "FedNow" is a service mark of the Federal Reserve Banks. Their terms forbid commercial use
@@ -60,9 +86,13 @@ Every page also carries the non-affiliation footer, rendered site-wide by
 `src/components/Footer.astro`. No Federal Reserve logos, colours or imagery are used, and
 the site makes no claim of certification, compatibility or production approval.
 
-`npm run check` enforces the mechanical half of this against the built output: no mark
-inside `<head>` on any page, the footer on every page, no mark in any built path, no
-analytics, and no unevaluated MDX expressions in links. **Run it after every build.**
+`npm run check` enforces the mechanical half of this against the built output, in eight
+checks: no mark inside `<head>` on any page, the footer on every page, no mark in any built
+path, analytics that is first-party and cookieless (below), no unevaluated MDX expressions
+in links, no retired ABA routing numbers, no mark in any `og:`/`twitter:` tag or `alt`
+attribute **anywhere in the document** (not just `<head>`, which is where checks 1 and 7
+differ), and no mark in the bytes of the social preview image itself. **Run it after every
+build.**
 
 It also runs `npm audit --omit=dev --audit-level=high` first, so a high-severity advisory
 in a runtime dependency fails the same command that guards the trademark rules. That step
@@ -82,6 +112,9 @@ two project-level settings that a file cannot express:
 - **Include files outside the root directory in the build step**: **enabled** — required,
   because the sync reads the repository's markdown from `..`. Without it the build fails
   with an explicit message rather than publishing an empty site.
+- **Web Analytics**: **enable it** (Project → Analytics), or the first-party
+  `/_vercel/insights/` route is not served and the page-view count silently stays empty.
+  See "Analytics" above.
 
 Canonical URL is `https://pacsmith.org` (`site.config.mjs`). **The domain is not registered
 yet**; nothing here configures DNS. Until it exists, Vercel's generated URL serves the site
@@ -91,6 +124,41 @@ referenced by the build. Override with `SITE_URL` in the Vercel project if neede
 
 ## Analytics
 
-None. The site sets no cookies and makes no third-party requests except the OpenSSF
-Scorecard badge on `/evaluate/`. See the `TODO(analytics)` in `astro.config.mjs` before
-adding any — the choice has to be cookieless and must not need a consent banner.
+**Vercel Web Analytics**, loaded from two plain script tags in `head` in
+`astro.config.mjs`. It replaced a `TODO(analytics)` there which said not to enable it
+without first checking what it stores. That check was done, against Vercel's current Web
+Analytics privacy documentation and against the shipped `@vercel/analytics` source:
+
+- **No cookies.** Visitors are distinguished by a hash Vercel derives server-side from the
+  incoming request, discarded after 24 hours. Nothing is written to the browser, so no
+  consent banner is required.
+- **First-party.** Both the script and the endpoint it reports to are served from this
+  site's own origin under `/_vercel/insights/`. No request goes to any third-party host.
+- **No personal data or IP addresses** are stored or made available.
+
+The npm package is deliberately **not** used. It swaps in a `va.vercel-scripts.com` debug
+script outside production — a third-party request the site does not want — and two script
+tags keep the site's dependency count at two. Check `[4/8]` fails the build if that host,
+or any other tracker, ever appears.
+
+### The site's privacy claims are checked, not asserted
+
+`/evaluate/`, `/about/#privacy` and `public/robots.txt` each state exactly what the site
+does. `npm run check` holds them to it:
+
+- no third-party tracker, and every `/_vercel/insights` reference root-relative;
+- nothing touches `document.cookie`, anywhere;
+- browser storage limited to the two keys `/about/#privacy` names in full —
+  `starlight-theme` (`localStorage`) and `sl-sidebar-state` (`sessionStorage`), both
+  written by Starlight to remember the theme and sidebar you left, both purely local. A
+  third key fails the build until the table on `/about/` is updated;
+- and the analytics script and the prose must agree: if the script is present while any
+  page still carries the old "loads no analytics" wording, the build fails. **The site must
+  never make a claim that is not exactly true — that is the check that enforces it.**
+
+### Maintainer step, outside this repository
+
+`/_vercel/insights/script.js` is served by Vercel only once **Web Analytics is enabled for
+the project in the Vercel dashboard** (Project → Analytics → Enable). Until then the tags
+are inert and the request 404s, which is harmless. Nothing in this repository can turn it
+on.
