@@ -9,12 +9,11 @@
     "dev": "npm run sync && ASTRO_TELEMETRY_DISABLED=1 astro dev",
     "build": "npm run sync && ASTRO_TELEMETRY_DISABLED=1 astro build",
     "preview": "astro preview",
-    "check": "bash scripts/check-build.sh"
+    "check": "npm audit --omit=dev --audit-level=high && bash scripts/check-build.sh"
   },
   "dependencies": {
     "@astrojs/starlight": "0.42.2",
-    "astro": "7.3.3",
-    "sharp": "0.34.4"
+    "astro": "7.3.3"
   },
   "engines": {
     "node": ">=22.0.0"

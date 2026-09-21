@@ -170,13 +170,23 @@ function resolveLink(target, fromSrc) {
   if (!rawPath) return null;
 
   const trailingSlash = rawPath.endsWith('/');
+
+  // A leading "/" is resolved from the REPOSITORY ROOT, not from the directory
+  // of the file containing the link. Joining it onto the containing directory
+  // instead — which is what a naive join does — either throws with a nonsense
+  // path or, worse, silently resolves to a real-but-wrong file when the nested
+  // path happens to exist. Neither is acceptable in generated output, so the
+  // case is handled explicitly; anything that still resolves nowhere throws
+  // below, as every unresolvable link here does.
+  const rootRelative = rawPath.startsWith('/');
   const resolved = path
     .posix
-    .normalize(path.posix.join(path.posix.dirname(fromSrc), rawPath))
+    .normalize(rootRelative ? rawPath.slice(1) : path.posix.join(path.posix.dirname(fromSrc), rawPath))
     .replace(/^\.\//, '')
     .replace(/\/$/, '');
 
   if (resolved.startsWith('..')) return null; // outside the repository — leave alone
+  if (resolved === '' || resolved === '.') return TREE + hash; // a link to the repository root
 
   if (pageLinks.has(resolved)) return href(pageLinks.get(resolved)) + hash;
   if (dirLinks.has(resolved) && dirLinks.get(resolved)) return href(dirLinks.get(resolved)) + hash;

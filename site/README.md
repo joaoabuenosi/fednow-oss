@@ -6,7 +6,7 @@ The project site, built with [Astro Starlight](https://starlight.astro.build/).
 npm ci
 npm run dev      # sync + dev server
 npm run build    # sync + static build into dist/
-npm run check    # trademark and footer checks over dist/ (run after build)
+npm run check    # dependency audit + trademark and footer checks over dist/
 ```
 
 Node 22+ (`.nvmrc`). **Run it from a full checkout** — the build reads markdown from the
@@ -63,6 +63,11 @@ the site makes no claim of certification, compatibility or production approval.
 `npm run check` enforces the mechanical half of this against the built output: no mark
 inside `<head>` on any page, the footer on every page, no mark in any built path, no
 analytics, and no unevaluated MDX expressions in links. **Run it after every build.**
+
+It also runs `npm audit --omit=dev --audit-level=high` first, so a high-severity advisory
+in a runtime dependency fails the same command that guards the trademark rules. That step
+needs network access; `bash scripts/check-build.sh` runs the output checks alone if you are
+offline.
 
 When adding a page: put the mark-free wording in `title`/`description`, and the descriptive
 wording in the body.
