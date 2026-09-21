@@ -6,40 +6,89 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-- **Supply chain**: releases are now signed keyless with Sigstore/cosign
-  (GitHub Actions OIDC — no private key, no repository secret), ship a merged
-  CycloneDX SBOM (`cargo-cyclonedx`) alongside the existing SPDX one, and carry
-  a `.cosign.bundle` per asset. New OpenSSF Scorecard workflow publishes its
-  results and adds the README badge. Third-party actions in the release and
-  Scorecard workflows are pinned to commit SHAs and every job declares minimal
-  `permissions`. `SECURITY.md` now documents the exact `cosign verify-blob`
-  command instead of asserting that releases are signed.
-- **QUICKSTART.md**: 5-minute Docker + curl walkthrough, every output
-  captured from a live run (settle, reject, timeout→pacs.028, 422 with rule
-  codes); compose pins a 2s sweeper so the documented timings hold.
+## [0.3.0] — 2026-09-21
+
+Verifiable releases — signed keyless with Sigstore, with a CycloneDX SBOM —
+client SDKs for Python and the JVM, and a five-minute path from
+`docker compose up` to a settled payment.
+
+### Supply chain
+
+- **Keyless release signing**: releases are now signed with Sigstore/cosign
+  (GitHub Actions OIDC — no private key, no repository secret) and carry a
+  `.cosign.bundle` per asset. A merged **CycloneDX** SBOM (`cargo-cyclonedx`)
+  ships alongside the existing SPDX one. Third-party actions in the release
+  and Scorecard workflows are pinned to commit SHAs and every job declares
+  minimal `permissions`. `SECURITY.md` now documents the exact
+  `cosign verify-blob` command instead of asserting that releases are signed
+  ([#81](https://github.com/joaoabuenosi/fednow-oss/pull/81)).
+- New **OpenSSF Scorecard** workflow publishes its results to the public
+  OpenSSF API, uploads findings to code scanning, and adds the README badge
+  ([#81](https://github.com/joaoabuenosi/fednow-oss/pull/81)).
+- Security: rustls 0.23.41 → 0.23.45 (pulled in transitively by ureq) for
+  [RUSTSEC-2026-0285](https://rustsec.org/advisories/RUSTSEC-2026-0285.html):
+  TLS 1.3 handshake messages were accepted across encryption level
+  boundaries. Lockfile-only; no API or behaviour change on our side
+  ([#72](https://github.com/joaoabuenosi/fednow-oss/pull/72)).
+
+### SDKs
+
 - **Python SDK** (`sdk/python/`, `fednow-gateway-client`): zero-dependency
   client — idempotent `submit`, `wait_final` that keeps waiting through
   `TIMEOUT_UNRESOLVED`, `ProfileViolation` with rule codes. Unit-tested
   against a stub and integration-tested against the live gateway↔sim stack
-  (MQ mode) in CI.
-- Design doc for the real IBM MQ transport (`docs/design/mq-transport.md`):
-  MQI via the IBM redistributable client behind an `ibm-mq` feature flag.
-- Dependency majors consolidated: ureq 3 (adapter migration), rusqlite 0.40
-  (MSRV → 1.95), toml 1, checkout v7, gh-release v3.
-- **quick-xml 0.42** (`fednow-core`): name accessors now yield `&str`, so
-  element-name matching compares against string literals. `ParseError::Xml`
-  and `BuildError::Serialize` now wrap the 0.42 `DeError`/`SeError` types
+  (MQ mode) in CI
+  ([#49](https://github.com/joaoabuenosi/fednow-oss/pull/49)).
+- **Java SDK** (`sdk/java/`, `io.github.joaoabuenosi:fednow-gateway-client`):
+  the same client contract on Java 17 — builder-checked
+  `SubmitPaymentRequest`, mandatory idempotency key on `submit`, `waitFinal`
+  that understands the timeout case, typed `GatewayException`. One runtime
+  dependency (Jackson); HTTP via the JDK's `java.net.http`. Unit- and
+  integration-tested against the live stack in CI
+  ([#51](https://github.com/joaoabuenosi/fednow-oss/pull/51)).
+
+### fednow-core
+
+- **quick-xml 0.42**: name accessors now yield `&str`, so element-name
+  matching compares against string literals. `ParseError::Xml` and
+  `BuildError::Serialize` now wrap the 0.42 `DeError`/`SeError` types
   (upstream renamed `DeError::UnexpectedStart` to `MixedContent`); parsing
-  behaviour is unchanged.
-- Security: rustls 0.23.41 → 0.23.45 (pulled in transitively by ureq) for
-  [RUSTSEC-2026-0285](https://rustsec.org/advisories/RUSTSEC-2026-0285.html):
-  TLS 1.3 handshake messages were accepted across encryption level
-  boundaries. Lockfile-only; no API or behaviour change on our side.
+  behaviour is unchanged
+  ([#71](https://github.com/joaoabuenosi/fednow-oss/pull/71)).
+
+### fednow-gateway
+
+- `/ops/summary` endpoint: payment counts by state plus reconciler health, so
+  an operator can see the whole book without querying the event store
+  ([#50](https://github.com/joaoabuenosi/fednow-oss/pull/50)).
+
+### Documentation
+
+- **QUICKSTART.md**: 5-minute Docker + curl walkthrough, every output
+  captured from a live run (settle, reject, timeout→pacs.028, 422 with rule
+  codes); compose pins a 2s sweeper so the documented timings hold
+  ([#47](https://github.com/joaoabuenosi/fednow-oss/pull/47)).
+- Handbook chapter 5: the returns flow (pacs.004, camt.056/camt.029)
+  ([#50](https://github.com/joaoabuenosi/fednow-oss/pull/50)).
+- Design doc for the real IBM MQ transport (`docs/design/mq-transport.md`):
+  MQI via the IBM redistributable client behind an `ibm-mq` feature flag
+  ([#48](https://github.com/joaoabuenosi/fednow-oss/pull/48)).
+
+### Project
+
+- Dependency majors consolidated: ureq 3 (adapter migration), rusqlite 0.40
+  (MSRV → 1.95), toml 1, checkout v7, gh-release v3
+  ([#46](https://github.com/joaoabuenosi/fednow-oss/pull/46)).
+- CI/process: the esteira pipeline (plugin settings, `AGENTS.md`, CODEOWNERS,
+  PR template, weekly digest)
+  ([#58](https://github.com/joaoabuenosi/fednow-oss/pull/58)).
 
 Planned: real IBM MQ transport implementation (phases in the design doc),
 message signing once the Technical Specifications wire format is obtained
-([#14](https://github.com/joaoabuenosi/fednow-oss/issues/14)),
-release artifact signing (Sigstore), Java SDK, public benchmarks.
+([#14](https://github.com/joaoabuenosi/fednow-oss/issues/14)), signed
+container images ([#64](https://github.com/joaoabuenosi/fednow-oss/issues/64)),
+package-registry publication (crates.io, PyPI, Maven Central), public
+benchmarks.
 
 ## [0.2.0] — 2026-07-03
 
@@ -147,5 +196,7 @@ reconcile — running end to end against a local FedNow Service simulator.
   XSD validation. `docker compose up` brings up simulator + gateway.
 - Releases ship an SPDX SBOM and SHA-256 checksums.
 
-[Unreleased]: https://github.com/joaoabuenosi/fednow-oss/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/joaoabuenosi/fednow-oss/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/joaoabuenosi/fednow-oss/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/joaoabuenosi/fednow-oss/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/joaoabuenosi/fednow-oss/releases/tag/v0.1.0

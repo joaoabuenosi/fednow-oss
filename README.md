@@ -4,7 +4,7 @@
 
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/joaoabuenosi/fednow-oss/badge)](https://scorecard.dev/viewer/?uri=github.com/joaoabuenosi/fednow-oss)
 
-> ⚠️ **Early development (v0.2.0).** Not production-ready yet; pre-1.0 minor
+> ⚠️ **Early development (v0.3.0).** Not production-ready yet; pre-1.0 minor
 > versions may break APIs. See the [CHANGELOG](CHANGELOG.md) and issues/milestones.
 
 **→ [Quick Start](QUICKSTART.md): send your first FedNow payment in 5 minutes**
@@ -28,13 +28,17 @@ community banks, credit unions and service providers in the US.
 
 ## Current milestone
 
-**Done through v0.2.0**: the complete send loop (build → validate → send →
+**Done through v0.3.0**: the complete send loop (build → validate → send →
 advise → reconcile) with production MQ semantics end to end, the returns
-message set (pacs.004, camt.056/029), supply-chain guardrails (cargo audit +
-Dependabot), and handbook chapters 1, 2 and 4. Message **signing** is tracked
-in [#14](https://github.com/joaoabuenosi/fednow-oss/issues/14), blocked on the
+message set (pacs.004, camt.056/029), Python and Java client SDKs, the
+five-minute [Quick Start](QUICKSTART.md), handbook chapters 1, 2, 4 and 5,
+and releases signed keyless with Sigstore shipping a CycloneDX and an SPDX
+SBOM. Message **signing** is tracked in
+[#14](https://github.com/joaoabuenosi/fednow-oss/issues/14), blocked on the
 Fed's access-controlled Technical Specifications (distributed at onboarding).
-**Next**: real IBM MQ transport, crates.io publication, Java/Python SDKs.
+**Next**: real IBM MQ transport, signed container images
+([#64](https://github.com/joaoabuenosi/fednow-oss/issues/64)), and
+package-registry publication (crates.io, PyPI, Maven Central).
 
 ```sh
 cargo test --workspace

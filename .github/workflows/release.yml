@@ -49,7 +49,7 @@ jobs:
       # graph out of Cargo.lock, which is the view a reviewer diffs against an
       # advisory feed. Most vendor-risk intake tooling wants CycloneDX by name.
       - name: Install cargo-cyclonedx
-        run: cargo install cargo-cyclonedx --locked
+        run: cargo install cargo-cyclonedx --version 0.5.9 --locked
 
       - name: Generate SBOM (CycloneDX)
         run: |
