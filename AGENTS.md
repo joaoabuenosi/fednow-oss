@@ -91,6 +91,13 @@ triage with `/esteira:deps`.
   entry and a version bump coherent with SemVer (pre-1.0: minor).
 - **Docs follow behaviour**: visible change → README / QUICKSTART / handbook /
   CHANGELOG in the same PR.
+- **The site derives, never duplicates**: a fact the repository already states
+  (version, release status, SBOM formats, workflow cadences) is parsed at build
+  time by `site/scripts/project-facts.mjs`, not typed into a page. Before adding
+  a fact to a hand-authored page, check whether a repository file owns it; if it
+  does, derive it. The `site` job in `ci.yml` builds and checks the site on any
+  PR that touches a file the site reads, so a change that would falsify it fails
+  in review rather than after deploy.
 
 ## Release
 

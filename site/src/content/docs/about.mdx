@@ -19,6 +19,8 @@ title: About
 description: Who maintains Pacsmith, why it exists, and what it is not.
 ---
 
+import facts from '../../generated/project-facts.json';
+
 Pacsmith is an open-source ISO 20022 toolkit for the FedNow® Service: a message library,
 a local simulator, a send gateway and client SDKs, all Apache-2.0.
 
@@ -98,7 +100,7 @@ names or assets should be read as suggesting a relationship that does not exist.
 Nor is it certified. Nothing in this repository has been approved for production use by any
 payment operator, there is no compatibility guarantee, and passing the local simulator or
 the conformance vectors is a rehearsal — not a substitute for an operator's own testing
-programme. It is early development software, offered under a licence that
+programme. It is {facts.status.lowerLabel} software, offered under a licence that
 [disclaims warranty](/evaluate/licence/).
 
 ## The name

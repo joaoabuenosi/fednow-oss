@@ -31,6 +31,25 @@ set -uo pipefail
 
 DIST="${1:-dist}"
 MARK='fednow'
+
+# What actually ships to a browser. A check about "what the site DOES when
+# loaded" must scan all of it: Astro emits client JS into dist/_astro/*.js, so a
+# tracker imported by a component — exactly what the @vercel/analytics package
+# would do — lands in a bundle and never appears in the page HTML. Scoping the
+# tracker grep to *.html was a real hole, found in review of ccf60d9.
+#
+# The converse is also true and is not an oversight: checks about page STRUCTURE
+# or about what the MARKDOWN AUTHOR wrote (<head>, the footer, the social tags,
+# unevaluated MDX expressions, edit links) stay on the HTML pages. Widening
+# those to JS produces false positives from third-party bundles that legitimately
+# contain the same syntax — Pagefind's search UI ships a client-side template
+# whose markup contains href="{{ ... }}", which is a Mustache placeholder it
+# evaluates at runtime, not an Astro expression that failed to evaluate at build
+# time. Each check below says which of the two it is.
+SHIPPED=(--include='*.html' --include='*.js' --include='*.css')
+
+# Overridable so scripts/selftest-checks.sh can point check [8/9] at a fixture.
+OG_SVG="${OG_SVG:-src/assets/og-image.svg}"
 FOOTER='Not affiliated with, endorsed by or sponsored by the Federal Reserve.'
 FOOTER_MARK='FedNow is a service mark of the Federal Reserve Banks.'
 
@@ -128,10 +147,11 @@ echo
 # the old "loads no analytics" wording — the site must never make a false claim,
 # and the way that would happen is by adding the script and forgetting the prose
 # (or removing the prose and forgetting the script).
+# SCOPE: everything that ships (html + js + css). This one is about behaviour.
 echo "[4/9] Analytics: first-party and cookieless, or nothing at all"
 
 third_party='googletagmanager|google-analytics|gtag\(|plausible\.io|analytics\.js|segment\.com|hotjar|matomo|va\.vercel-scripts\.com'
-if trackers=$(grep -rlE "$third_party" "$DIST" --include='*.html' 2>/dev/null); then
+if trackers=$(grep -rlE "$third_party" "$DIST" "${SHIPPED[@]}" 2>/dev/null); then
   echo "      FAIL: third-party tracker references found:"
   echo "$trackers" | sed 's/^/             /'
   status=1
@@ -141,7 +161,7 @@ fi
 
 # Any reference to the insights endpoint must be root-relative, i.e. served from
 # this origin. An absolute URL would make it a third-party request.
-if offsite=$(grep -rhoE '(src|href)="[^"]*_vercel/insights[^"]*"' "$DIST" --include='*.html' 2>/dev/null \
+if offsite=$(grep -rhoE '(src|href)="[^"]*_vercel/insights[^"]*"' "$DIST" "${SHIPPED[@]}" 2>/dev/null \
              | sort -u | grep -v '="/_vercel/insights'); then
   echo "      FAIL: insights loaded from somewhere other than this origin:"
   echo "$offsite" | sed 's/^/             /'
@@ -150,7 +170,7 @@ else
   echo "      PASS: every /_vercel/insights reference is first-party (root-relative)"
 fi
 
-if cookies=$(grep -rl 'document\.cookie' "$DIST" --include='*.html' 2>/dev/null); then
+if cookies=$(grep -rl 'document\.cookie' "$DIST" "${SHIPPED[@]}" 2>/dev/null); then
   echo "      FAIL: a script touches document.cookie:"
   echo "$cookies" | sed 's/^/             /'
   status=1
@@ -163,7 +183,7 @@ DECLARED_STORAGE_KEYS='starlight-theme sl-sidebar-state'
 key_pattern="$(echo "$DECLARED_STORAGE_KEYS" | tr ' ' '|')"
 storage_ok=1
 for key in $DECLARED_STORAGE_KEYS; do
-  grep -rqF "$key" "$DIST" --include='*.html' 2>/dev/null || {
+  grep -rqF "$key" "$DIST" "${SHIPPED[@]}" 2>/dev/null || {
     echo "      NOTE: declared storage key \"$key\" is no longer used — /about/ can drop it"
   }
 done
@@ -172,7 +192,12 @@ done
 # and a bare identifier says nothing about what is actually stored. A literal
 # key that is not on the list is the case worth failing on, and it is also the
 # only way a NEW piece of stored state realistically arrives.
-if stray=$(grep -rhoE "(local|session)Storage\.(set|get)Item\(([\`\"'])[A-Za-z0-9_.-]+\2" "$DIST" --include='*.html' 2>/dev/null \
+# The closing backreference MUST be \3 — the quote-character group. It was \2
+# (the set|get group), so the pattern only matched a key literally ending in
+# "set" or "get", i.e. never, and this guard printed PASS unconditionally on
+# every input. Caught in review on ccf60d9; scripts/selftest-checks.sh now
+# injects a stray key on every run so it cannot silently stop failing again.
+if stray=$(grep -rhoE "(local|session)Storage\.(set|get)Item\(([\`\"'])[A-Za-z0-9_.-]+\3" "$DIST" "${SHIPPED[@]}" 2>/dev/null \
            | grep -oE '[A-Za-z0-9_.-]+.$' | sed 's/.$//' | sort -u | grep -vE "^($key_pattern)$"); then
   echo "      FAIL: undeclared browser-storage key(s) — /about/ names only: $DECLARED_STORAGE_KEYS"
   echo "$stray" | sed 's/^/             /'
@@ -184,7 +209,7 @@ fi
 # The claim and the code must agree, in whichever direction they disagree.
 STALE_CLAIM='loads no analytics'
 analytics_present=0
-grep -rqF '/_vercel/insights/script.js' "$DIST" --include='*.html' 2>/dev/null && analytics_present=1
+grep -rqF '/_vercel/insights/script.js' "$DIST" "${SHIPPED[@]}" 2>/dev/null && analytics_present=1
 stale_pages=$(grep -rlF "$STALE_CLAIM" "$DIST" --include='*.html' 2>/dev/null || true)
 
 if [ "$analytics_present" -eq 1 ] && [ -n "$stale_pages" ]; then
@@ -202,6 +227,9 @@ echo
 # ------------------------------------------------- 5. unresolved MDX exprs --
 # MDX does not evaluate `{...}` in a markdown link destination; such a link is
 # emitted verbatim and URL-encoded (%7B...%7D). Catch it rather than ship it.
+# SCOPE: HTML pages. This is about what the markdown author wrote surviving into
+# the rendered page, not about runtime behaviour — and client bundles carry other
+# template syntaxes that look identical (see the SHIPPED note above).
 echo "[5/9] No unresolved MDX expressions in links"
 if broken=$(grep -rlE 'href="%7B|href="\{|src="%7B' "$DIST" --include='*.html' 2>/dev/null); then
   echo "      FAIL: unevaluated expressions in href/src:"
@@ -303,7 +331,6 @@ echo
 # render. Neither is visible in a diff, and a wrong social card is only ever
 # noticed by the person you were trying to impress.
 echo "[8/9] The social preview image carries no mark, and is a valid 1200x630 card"
-OG_SVG="src/assets/og-image.svg"
 OG_PNG="$DIST/og-image.png"
 img_status=0
 
@@ -324,7 +351,7 @@ if [ -f "$OG_PNG" ]; then
   if out=$(node scripts/verify-og.mjs "$OG_PNG" 2>&1); then
     echo "      PASS: ${out#verify-og: }"
   else
-    echo "$out" | sed 's/^/      /'
+    echo "      FAIL: ${out#verify-og: FAIL — }"
     img_status=1
   fi
 fi

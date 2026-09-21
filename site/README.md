@@ -6,7 +6,7 @@ The project site, built with [Astro Starlight](https://starlight.astro.build/).
 npm ci
 npm run dev      # sync + dev server
 npm run build    # sync + static build into dist/
-npm run check    # dependency audit + trademark and footer checks over dist/
+npm run check    # dependency audit + the nine output checks + their self-test
 ```
 
 Node 22+ (`.nvmrc`). **Run it from a full checkout** — the build reads markdown from the
@@ -37,8 +37,41 @@ Edit the source file, never the generated page. The sync also:
   `src/generated/verify-release.json`, so `/evaluate/` cannot show a stale command;
 - asserts `LICENSE` is still Apache-2.0, because `/evaluate/licence/` says so in prose.
 
-Hand-authored pages: `index.mdx` (home), `evaluate/index.mdx`, `evaluate/licence.md`,
-`about.md`.
+Hand-authored pages: `index.mdx` (home), `evaluate/index.mdx`, `evaluate/licence.mdx`,
+`about.mdx`. All four are `.mdx` rather than `.md` so they can import the derived project
+facts below; plain `.md` cannot import.
+
+## The site states no project fact twice
+
+The version, the release status, which release started signing, the SBOM formats and asset
+names, and the cargo-audit / Scorecard / Dependabot cadences are **not written on the
+pages**. Every one of them is already stated somewhere in the repository, and two copies
+drift the first time someone bumps a version and does not think about `site/`. A site that
+confidently tells a bank's procurement team last release's version is worse than one that
+says nothing.
+
+`scripts/project-facts.mjs` parses each fact from the file that owns it, and `npm run sync`
+writes the result to `src/generated/project-facts.json` (generated, gitignored) for the MDX
+pages to import:
+
+| Fact | Parsed from |
+|---|---|
+| Version, and the `vX.Y.Z` tag | `Cargo.toml` `[workspace.package] version` |
+| Status label, production-readiness | the `> ⚠️ **…**` line in the root `README.md` |
+| Released versions | the `## [X.Y.Z]` headings in `CHANGELOG.md` |
+| First signed release, the release with no assets | `SECURITY.md` |
+| SBOM assets and formats, the checksums asset | the release-asset table in `SECURITY.md` |
+| `cargo audit` cadence | the `cron` in `.github/workflows/audit.yml` |
+| Scorecard cadence and push branches | `.github/workflows/scorecard.yml` |
+| Dependabot cadence | `.github/dependabot.yml` |
+
+**Every extractor throws on a shape it does not recognise, and that is the feature.** If a
+source file is reworded so a fact can no longer be found, the build fails loudly rather
+than publishing a stale value. The version is also cross-checked: if `README.md`'s status
+line and `Cargo.toml` disagree, the build says so instead of picking one.
+
+When adding a fact to a page, ask first whether the repository already states it. If it
+does, derive it.
 
 ## Social preview
 
@@ -99,6 +132,23 @@ in a runtime dependency fails the same command that guards the trademark rules. 
 needs network access; `bash scripts/check-build.sh` runs the output checks alone if you are
 offline.
 
+### Every check is proved able to fail
+
+`scripts/selftest-checks.sh` runs last, and is the reason to trust the nine above. Review of
+this PR's first commit found two checks that reported PASS on **every possible input** — one
+regex closed with the wrong backreference, and one grep was scoped to `*.html` so a tracker
+in a JS bundle was invisible. Both were green. Neither was checking anything, which is worse
+than having no check, because the pages make narrow privacy claims *on the strength of them*.
+
+So the self-test takes the real build, injects one specific violation, and asserts **that
+specific check** reports FAIL — 23 cases covering all nine. Asserting a non-zero exit code is
+not enough, and was itself a bug during development: an unrelated check was failing for its
+own reason and every negative test looked like it passed. It also runs a positive control
+first, because if the unmodified build does not pass cleanly, none of the negative cases
+prove anything.
+
+A check that cannot fail is not a check. This is what stops one shipping.
+
 When adding a page: put the mark-free wording in `title`/`description`, and the descriptive
 wording in the body.
 
@@ -128,6 +178,22 @@ accident.
 its frontmatter carries the rule: name, GitHub handle and the one line of background, and
 nothing beyond them without the maintainer's own words. See **AGENTS.md → Rules →
 Maintainer's personal data** in the repository root; keep the two in step.
+
+## CI
+
+`.github/workflows/ci.yml` has a **`site`** job: `npm ci`, `npm run build`, `npm run check`,
+on pull requests and pushes to `main`. A change to this repository can break the site build
+(`sync-docs.mjs` fails on a relative link that resolves nowhere; `project-facts.mjs` fails on
+a source it can no longer parse) or falsify it (a reworded privacy claim, a reintroduced
+routing number, the mark in a metatag). Vercel would find that out on deploy, after merge.
+This finds it in review.
+
+GitHub has no per-job `paths:` filter and the workflow-level `on:` has none, because the Rust
+jobs must run on every change — so a tiny `site-changes` job works out whether the diff
+touches anything the site reads (`site/**`, any `*.md` anywhere, `docs/**`, `Cargo.toml`,
+`.github/workflows/**`) and `site` runs only if it does. Any markdown counts, not just the
+root files: the crate READMEs are site sources too. With no usable diff base — a first push,
+a force-push — it fails **safe** and runs the job.
 
 ## Deployment
 

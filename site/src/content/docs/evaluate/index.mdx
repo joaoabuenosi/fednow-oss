@@ -13,13 +13,14 @@ description: "What you get if you adopt this: signed releases you can verify you
 
 import { Code, Aside, LinkCard, CardGrid } from '@astrojs/starlight/components';
 import verify from '../../../generated/verify-release.json';
+import facts from '../../../generated/project-facts.json';
 
 This page is for the people who have to sign off on the software, not write against it.
 Everything below is checkable from outside the project — you do not have to take the
 maintainer's word for any of it.
 
 <Aside type="caution" title="What this project does not claim">
-Pacsmith is **early development (v0.3.1)** and is **not production-ready**. It is an
+Pacsmith is **{facts.status.lowerLabel} ({facts.tag})** and is **not production-ready**. It is an
 independent open-source project: nothing here is certified, approved or endorsed by the
 Federal Reserve or any other operator, and no compatibility with the FedNow® Service is
 guaranteed. Pre-1.0 minor versions may break APIs. Evaluate it as what it is — a reference
@@ -53,34 +54,52 @@ verification section ever moves or changes shape, the site build fails instead o
 publishing a command that does not work.
 </Aside>
 
-Signing starts with **v0.3.1**. Earlier releases carry no signature bundle, and v0.3.0 has
-no assets at all — its release run failed before the artifacts were produced. Use v0.3.1 or
-later. The [security policy](/evaluate/security-policy/#verifying-a-release) has the
-full detail, including why checksums alone prove nothing about origin.
+Signing starts with **{facts.releases.signingStartsAt}**. Earlier releases carry no signature
+bundle, and {facts.releases.noAssets} has no assets at all — its release run failed before the
+artifacts were produced. Use {facts.releases.signingStartsAt} or later. The
+[security policy](/evaluate/security-policy/#verifying-a-release) has the full detail,
+including why checksums alone prove nothing about origin.
 
 ## Software Bill of Materials
 
 Every signed release ships two SBOMs of the same build:
 
-| Asset | Format | Produced from |
-|---|---|---|
-| `*.cdx.json` | CycloneDX | `cargo-cyclonedx`, over the committed `Cargo.lock` |
-| `*.spdx.json` | SPDX | the same release build |
+{/* Rows come from the release-asset table in SECURITY.md, parsed at build time
+    by scripts/project-facts.mjs — so this page cannot list an SBOM the releases
+    do not ship, or miss one they do. No `key` prop: Astro renders this to static
+    HTML rather than reconciling it, and `key` would be emitted as a literal
+    attribute on the <tr>. */}
+<table>
+  <thead>
+    <tr><th>Asset</th><th>Format</th></tr>
+  </thead>
+  <tbody>
+    {facts.assets.sboms.map((sbom) => (
+      <tr>
+        <td><code>{sbom.asset}</code></td>
+        <td>{sbom.format}</td>
+      </tr>
+    ))}
+  </tbody>
+</table>
 
 Both are signed with the same keyless flow as the binaries, so an SBOM can be verified with
-the command above — swap the filenames. `SHA256SUMS` covers the tarball and both SBOMs, and
-is signed too.
+the command above — swap the filenames. <code>{facts.assets.checksums}</code> covers the
+tarball and both SBOMs, and is signed too. The
+[security policy](/evaluate/security-policy/#supply-chain) has the full asset table,
+including how each SBOM is produced.
 
 Dependency advisories are not left to release time: `cargo audit` runs on every lockfile
-change and daily, and Dependabot opens weekly update pull requests.
+change and {facts.cadence.audit}, and Dependabot opens {facts.cadence.dependabotCargo} update
+pull requests.
 
 ## OpenSSF Scorecard
 
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/joaoabuenosi/fednow-oss/badge)](https://scorecard.dev/viewer/?uri=github.com/joaoabuenosi/fednow-oss)
 
-The [OpenSSF Scorecard](https://securityscorecards.dev/) runs weekly and on every push to
-`main`, publishes to the public OpenSSF API, and uploads its findings to the repository's
-code scanning tab. The badge above is served by OpenSSF, not by this site — it shows the
+The [OpenSSF Scorecard](https://securityscorecards.dev/) runs {facts.cadence.scorecard} and on
+every push to <code>{facts.cadence.scorecardPushBranches.join(', ')}</code>, publishes to the
+public OpenSSF API, and uploads its findings to the repository's code scanning tab. The badge above is served by OpenSSF, not by this site — it shows the
 current score whether or not that score is flattering.
 
 Raising it is ongoing work rather than a finished job: the most recent step was
@@ -124,7 +143,7 @@ because they are what decides what gets built next:
   implemented today versus what is still on the roadmap.
 - **Pilots.** Standing the gateway and the simulator up against your own environment, and
   working out what would have to be true before any of it went near production. It is
-  early development software; that conversation starts from there, not around it.
+  {facts.status.lowerLabel} software; that conversation starts from there, not around it.
 - **Design partners.** The simulator is being packaged as a certification-readiness kit
   ([#79](https://github.com/joaoabuenosi/fednow-oss/issues/79)) — a local rehearsal of the
   Customer Testing Program's scenarios, run on your own machines before you book operator

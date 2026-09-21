@@ -134,6 +134,117 @@ jobs:
       - name: camt.029 fixtures
         run: xmllint --noout --schema core/schemas/camt.029.001.09.xsd core/tests/fixtures/camt029_valid*.xml
 
+  # ---------------------------------------------------------------- site --
+  # The site is generated FROM this repository's markdown, and it states facts
+  # derived from Cargo.toml, CHANGELOG.md, SECURITY.md and the workflow files:
+  # the version, the release status, which release started signing, the SBOM
+  # formats, the cargo-audit / Scorecard / Dependabot cadences. So a change here
+  # can break the site build (sync-docs.mjs fails on a relative link that
+  # resolves nowhere, project-facts.mjs fails on a source it can no longer
+  # parse) or falsify it (a reworded privacy claim, a reintroduced routing
+  # number, the mark in a metatag). Vercel would find that out on deploy, after
+  # merge. This finds it in review.
+  #
+  # Two jobs rather than one: GitHub has no per-job `paths:` filter, and the
+  # workflow-level `on:` has none because the Rust jobs need to run on every
+  # change. So `site-changes` works out whether this diff touches anything the
+  # site reads, and `site` runs only if it does.
+
+  site-changes:
+    name: site — does this diff reach it?
+    runs-on: ubuntu-latest
+    permissions:
+      # Reads the tree and the base branch to diff against. Nothing else.
+      contents: read
+    outputs:
+      affected: ${{ steps.decide.outputs.affected }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Needed to resolve a merge base against the target branch.
+          fetch-depth: 0
+      - id: decide
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+
+          # Everything the site reads or republishes. ANY markdown counts, not
+          # just the root files: sync-docs.mjs republishes gateway/README.md,
+          # simulator/README.md, conformance/README.md and both SDK READMEs as
+          # site pages, so a crate's README is a site source too. Kept
+          # deliberately wide — skipping a job that should have run is a broken
+          # deploy, while running one that need not have costs about forty
+          # seconds.
+          patterns='^site/|\.md$|^docs/|^Cargo\.toml$|^\.github/workflows/'
+
+          base=""
+          if [ -n "${BASE_REF:-}" ]; then
+            # pull_request: diff against the merge base with the target branch.
+            git fetch --no-tags origin "$BASE_REF"
+            base="$(git merge-base FETCH_HEAD HEAD || true)"
+          elif [ -n "${BEFORE:-}" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            # push: diff against whatever the branch pointed at before.
+            base="$BEFORE"
+          fi
+
+          # Fail SAFE, not quiet. A first push to a branch, a force-push or a
+          # squashed base all leave no usable base commit; in that case run the
+          # site job rather than assume it is unaffected.
+          if [ -z "$base" ] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            echo "No usable diff base — running the site job anyway."
+            echo "affected=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          changed="$(git diff --name-only "$base" HEAD)"
+          echo "Changed files:"
+          printf '%s\n' "$changed" | sed 's/^/  /'
+
+          if printf '%s\n' "$changed" | grep -qE "$patterns"; then
+            echo "affected=true" >> "$GITHUB_OUTPUT"
+            echo "-> the site reads at least one of these; running its build and checks."
+          else
+            echo "affected=false" >> "$GITHUB_OUTPUT"
+            echo "-> nothing the site reads changed; skipping."
+          fi
+
+  site:
+    name: site — build + trademark/privacy checks
+    needs: site-changes
+    if: needs.site-changes.outputs.affected == 'true'
+    runs-on: ubuntu-latest
+    # Only reads the tree. The site deploy is Vercel's, via its own Git
+    # integration — nothing here publishes anything.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Pin reviewed by reading action.yml at this commit: it accepts
+      # node-version-file, cache and cache-dependency-path, which is what the
+      # step below passes.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: site/.nvmrc
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - name: install
+        working-directory: site
+        run: npm ci
+      # Runs sync-docs.mjs first, which regenerates every page from the
+      # repository's markdown and derives the project facts — so a broken
+      # relative link or an unparseable source fails right here.
+      - name: build
+        working-directory: site
+        run: npm run build
+      # The trademark, footer, routing-number, analytics, social-preview and
+      # edit-link checks, then the self-test that proves each of them can
+      # actually fail.
+      - name: check
+        working-directory: site
+        run: npm run check
+
   workflow-hardening:
     # SECURITY.md tells vendor-risk reviewers that every third-party action in
     # this repository is SHA-pinned and that every workflow starts from
