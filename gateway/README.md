@@ -35,7 +35,7 @@ Submission body (amounts are **integer cents**):
   "amount_cents": 125000,
   "debtor_name": "Jane Example",   "debtor_account": "123456789012",
   "creditor_name": "John Example", "creditor_account": "987654321000",
-  "creditor_agent_routing_number": "091000019",
+  "creditor_agent_routing_number": "992000008",
   "category_purpose": "CONS",
   "end_to_end_identification": "optional — defaults to reference",
   "uetr": "optional"
@@ -53,7 +53,7 @@ plus `TIMEOUT_UNRESOLVED` (a work item, resolved by the reconciler — see the
 | `FEDNOW_GW_ADDR` | `0.0.0.0:8090` | REST listen address |
 | `FEDNOW_GW_SIM_URL` | `http://localhost:8080` | Southbound target (fednow-sim) |
 | `FEDNOW_GW_SOUTHBOUND` | `http` | `http` = synchronous dev mode; `mq` = production semantics (fire-and-forget sends + advice queue, enveloped messages) |
-| `FEDNOW_GW_SENDER_RTN` | `021040078` | Your connection party id (routing number) |
+| `FEDNOW_GW_SENDER_RTN` | `991000009` | Your connection party id (routing number) |
 | `FEDNOW_GW_DB` | `fednow-gateway.db` | SQLite event store path (state survives restarts) |
 | `FEDNOW_GW_TIMEOUT_SECS` | `20` | Presumed timeout: `ACK_PENDING` older than this becomes `TIMEOUT_UNRESOLVED` |
 | `FEDNOW_GW_BACKOFF_SECS` | `30` | Minimum interval between pacs.028 queries per payment |

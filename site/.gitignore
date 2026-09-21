@@ -1,0 +1,11 @@
+# Build output and caches
+dist/
+.astro/
+node_modules/
+
+# Docs synced from the repository root by `npm run sync`.
+# These are GENERATED — the markdown in the repository root is the source of
+# truth, and committing copies here is exactly the drift we are avoiding.
+/src/content/docs/docs/
+/src/content/docs/evaluate/security-policy.md
+/src/generated/

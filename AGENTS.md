@@ -50,9 +50,16 @@ triage with `/esteira:deps`.
 - **Language**: code, comments, commits, docs and PRs in English. Discussion
   with the maintainer may be in pt-BR.
 - **No real data, ever**: no credentials, certificates, real routing numbers,
-  institution names or Fed endpoints. Fixtures use fictitious identifiers with
-  valid checksums. Nothing copied from access-restricted specifications
-  (see `core/schemas/README.md` for how XSDs are handled).
+  institution names or Fed endpoints. Nothing copied from access-restricted
+  specifications (see `core/schemas/README.md` for how XSDs are handled).
+  **Routing numbers must start with `99`** — a block the ABA assigns to nobody
+  (real ones live in `01`–`12`, `21`–`32`, `61`–`72`, `80`), so an example can
+  never name a real institution. Use `991000009` (sender), `992000008`
+  (creditor agent) or `993000007` (service application); all three pass the
+  check digit because `fednow.aba.checksum` enforces it. For a negative test,
+  alter the last digit (`991000008`, `992000007`). The table in
+  `docs/handbook/README.md` is the reference, and `site/scripts/check-build.sh`
+  fails the site build if a known-real number reappears.
 - **ISO 20022**: required fields per FedNow profile, correct namespaces; every
   new fixture validates against the vendored XSD and gets a vector in
   `conformance/vectors`.

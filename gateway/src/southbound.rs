@@ -107,7 +107,7 @@ pub struct MqSimPort {
 }
 
 /// The FedNow Service application identifier (BAH `To` of every send).
-const FEDNOW_SERVICE_RTN: &str = "021150706";
+const FEDNOW_SERVICE_RTN: &str = "993000007";
 
 impl MqSimPort {
     pub fn new(base_url: impl Into<String>, participant_routing_number: impl Into<String>) -> Self {

@@ -21,7 +21,7 @@ fn parses_payment_return_into_typed_model() {
     let msg = &doc.payment_return;
     assert_eq!(
         msg.group_header.message_identification,
-        "20260702091000019RETURN0001"
+        "20260702992000008RETURN0001"
     );
     assert_eq!(msg.transaction_information.len(), 1);
 
@@ -36,7 +36,7 @@ fn parses_payment_return_into_typed_model() {
             .as_ref()
             .unwrap()
             .original_message_identification,
-        "20260702021040078FIXTURE001"
+        "20260702991000009FIXTURE001"
     );
     assert_eq!(
         tx.return_reason_information[0]
@@ -74,7 +74,7 @@ fn wrong_namespace_is_flagged() {
 #[test]
 fn non_fednow_msgid_is_flagged() {
     let xml = VALID.replace(
-        "<MsgId>20260702091000019RETURN0001</MsgId>",
+        "<MsgId>20260702992000008RETURN0001</MsgId>",
         "<MsgId>RETURN-0001</MsgId>",
     );
     assert!(codes(&xml).contains(&"fednow.msgid.format"));
@@ -92,7 +92,7 @@ fn missing_clearing_system_is_flagged() {
 #[test]
 fn missing_orgnlgrpinf_is_flagged() {
     let xml = VALID.replace(
-        "<OrgnlGrpInf>\n        <OrgnlMsgId>20260702021040078FIXTURE001</OrgnlMsgId>\n        <OrgnlMsgNmId>pacs.008.001.08</OrgnlMsgNmId>\n        <OrgnlCreDtTm>2026-07-02T10:30:00-05:00</OrgnlCreDtTm>\n      </OrgnlGrpInf>\n      ",
+        "<OrgnlGrpInf>\n        <OrgnlMsgId>20260702991000009FIXTURE001</OrgnlMsgId>\n        <OrgnlMsgNmId>pacs.008.001.08</OrgnlMsgNmId>\n        <OrgnlCreDtTm>2026-07-02T10:30:00-05:00</OrgnlCreDtTm>\n      </OrgnlGrpInf>\n      ",
         "",
     );
     assert!(codes(&xml).contains(&"fednow.orgnlgrpinf.required"));
@@ -120,6 +120,6 @@ fn returned_amount_rules_apply() {
 
 #[test]
 fn bad_agent_checksum_is_flagged() {
-    let xml = VALID.replace("<MmbId>021040078</MmbId>", "<MmbId>021040079</MmbId>");
+    let xml = VALID.replace("<MmbId>991000009</MmbId>", "<MmbId>991000008</MmbId>");
     assert!(codes(&xml).contains(&"fednow.aba.checksum"));
 }

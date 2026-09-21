@@ -8,6 +8,30 @@ All notable changes to this project are documented here. The format follows
 
 ### Security
 
+- **Every example routing number replaced — the old ones were, or could have
+  been, real.** `091000019` is Wells Fargo Bank NA (Minnesota); `021040078` and
+  `021150706` sit in an assignable New York range with valid ABA check digits,
+  which is precisely what made them unsafe to keep. All three were used
+  throughout the fixtures, conformance vectors, tests, SDK examples, the
+  quickstart and the handbook — and the new project site would have republished
+  them next to the FedNow mark, where a real bank's routing number reads as that
+  bank participating or endorsing. The repository's own rule already forbade
+  real routing numbers and institution names; it was not being met.
+
+  Replacements all begin with `99`, a block the ABA assigns to nobody (real
+  numbers live in `01`–`12`, `21`–`32`, `61`–`72` and `80`), so no example can
+  name a real institution: `991000009` (sending institution), `992000008`
+  (creditor agent), `993000007` (the service application). All three pass the
+  check digit deliberately — `fednow.aba.checksum` enforces it, so a failing
+  value could not demonstrate anything — and the unassignable prefix, not the
+  check digit, is what makes them safe. The bad-checksum negative tests keep
+  their off-by-one shape (`991000008`, `992000007`) and still fail as intended.
+  **No message logic, validation rule or public API changed**; fixtures and
+  expectations moved together, and `cargo test --workspace` is 179 passed / 0
+  failed, the same count as before. `docs/handbook/README.md` documents the
+  convention, `AGENTS.md` makes it a rule, and `site/scripts/check-build.sh`
+  fails the site build if a retired number reappears in the published output.
+
 - **Every workflow is now SHA-pinned and permission-scoped**, not just
   `release.yml` and `scorecard.yml`. An independent verification of the v0.3.1
   release ([#83](https://github.com/joaoabuenosi/fednow-oss/pull/83)) found two
@@ -219,7 +243,7 @@ reconcile — running end to end against a local FedNow Service simulator.
   **pacs.002.001.10** (both FedNow directions), **pacs.028.001.03**,
   **pacs.004.001.10** and **head.001.001.02** (BAH), enforcing the real
   FedNow Service Release 1 profiles (message id shape, FDN/CLRG/SLEV/USABA,
-  USD cent amounts, service identifier `021150706`, direction-dependent BAH
+  USD cent amounts, service identifier `993000007`, direction-dependent BAH
   and status rules). Every violation carries a stable rule code and its
   source (XSD facet / ISO rule / FedNow profile).
 - Builders for pacs.008, pacs.002 (both directions) and pacs.028 — money is

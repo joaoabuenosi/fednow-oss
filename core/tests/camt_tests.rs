@@ -22,7 +22,7 @@ fn return_request_parses_and_validates_clean() {
     let doc = camt056::parse(REQ).unwrap();
     assert_eq!(doc.xmlns.as_deref(), Some(camt056::NAMESPACE));
     let msg = &doc.cancellation_request;
-    assert_eq!(msg.assignment.identification, "20260703021040078RETREQ0001");
+    assert_eq!(msg.assignment.identification, "20260703991000009RETREQ0001");
     assert_eq!(
         msg.case.as_ref().unwrap().identification,
         "CASE-20260703-0001"
@@ -70,7 +70,7 @@ fn proprietary_cancellation_reason_is_flagged() {
 #[test]
 fn non_fednow_assignment_id_is_flagged() {
     let xml = REQ.replace(
-        "<Id>20260703021040078RETREQ0001</Id>",
+        "<Id>20260703991000009RETREQ0001</Id>",
         "<Id>RETREQ-0001</Id>",
     );
     assert!(codes_056(&xml).contains(&"fednow.msgid.format"));
@@ -116,6 +116,6 @@ fn rejected_response_without_reason_is_flagged() {
 
 #[test]
 fn bad_assignment_agent_checksum_is_flagged() {
-    let xml = RESP_RJCR.replace("<MmbId>091000019</MmbId>", "<MmbId>091000018</MmbId>");
+    let xml = RESP_RJCR.replace("<MmbId>992000008</MmbId>", "<MmbId>992000007</MmbId>");
     assert!(codes_029(&xml).contains(&"fednow.aba.checksum"));
 }

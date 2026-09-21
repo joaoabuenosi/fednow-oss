@@ -25,6 +25,13 @@ Thumbs.db
 # Python
 __pycache__/
 *.pyc
+sdk/python/build/
+*.egg-info/
+
+# Java (Maven) — `/target/` above is anchored to the repo root, so the SDK's
+# own build directory needs its own entry; running `mvn test` otherwise leaves
+# .class files and surefire reports staged.
+sdk/java/target/
 
 # Working notes for the AI pair (local only)
 CLAUDE.md

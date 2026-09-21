@@ -552,7 +552,7 @@ pub struct Head001Builder {
 
 impl Head001Builder {
     /// Start a header. `from`/`to` are connection party identifiers (routing
-    /// number or the service application id, `021150706`).
+    /// number or the service application id, `993000007`).
     /// `message_definition_identifier` names the enclosed Document (e.g.
     /// `pacs.008.001.08`); the market practice id defaults to `frb.fednow.01`
     /// (override for camt.029/camt.052 contexts).

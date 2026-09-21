@@ -38,7 +38,7 @@ fn parses_settlement_advice_into_typed_model() {
         .expect("fixture references the original message per transaction");
     assert_eq!(
         orig.original_message_identification,
-        "20260702021040078FIXTURE001"
+        "20260702991000009FIXTURE001"
     );
     assert_eq!(orig.original_message_name_identification, "pacs.008.001.08");
     assert!(orig.original_creation_date_time.is_some());
@@ -93,7 +93,7 @@ fn service_advice_fails_the_participant_profile() {
 #[test]
 fn missing_orgnlgrpinf_is_flagged_by_the_fednow_profile() {
     let xml = VALID_RJCT.replace(
-        "<OrgnlGrpInf>\n        <OrgnlMsgId>20260702021040078FIXTURE001</OrgnlMsgId>\n        <OrgnlMsgNmId>pacs.008.001.08</OrgnlMsgNmId>\n        <OrgnlCreDtTm>2026-07-02T10:30:00-05:00</OrgnlCreDtTm>\n      </OrgnlGrpInf>\n      ",
+        "<OrgnlGrpInf>\n        <OrgnlMsgId>20260702991000009FIXTURE001</OrgnlMsgId>\n        <OrgnlMsgNmId>pacs.008.001.08</OrgnlMsgNmId>\n        <OrgnlCreDtTm>2026-07-02T10:30:00-05:00</OrgnlCreDtTm>\n      </OrgnlGrpInf>\n      ",
         "",
     );
     let doc = pacs002::parse(&xml).unwrap();
@@ -138,7 +138,7 @@ fn proprietary_reason_is_rejected_for_participant_direction() {
 #[test]
 fn missing_instructing_agent_is_flagged_by_the_fednow_profile() {
     let xml = VALID_RJCT.replace(
-        "<InstgAgt>\n        <FinInstnId>\n          <ClrSysMmbId>\n            <ClrSysId>\n              <Cd>USABA</Cd>\n            </ClrSysId>\n            <MmbId>091000019</MmbId>\n          </ClrSysMmbId>\n        </FinInstnId>\n      </InstgAgt>\n      ",
+        "<InstgAgt>\n        <FinInstnId>\n          <ClrSysMmbId>\n            <ClrSysId>\n              <Cd>USABA</Cd>\n            </ClrSysId>\n            <MmbId>992000008</MmbId>\n          </ClrSysMmbId>\n        </FinInstnId>\n      </InstgAgt>\n      ",
         "",
     );
     let doc = pacs002::parse(&xml).unwrap();

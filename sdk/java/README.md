@@ -14,7 +14,7 @@ var payment = gw.submit("order-2026-0001",          // idempotency key — manda
         .amountCents(125_000)                        // integer cents, never floats
         .debtorName("Jane Example").debtorAccount("123456789012")
         .creditorName("John Example").creditorAccount("987654321000")
-        .creditorAgentRoutingNumber("091000019")
+        .creditorAgentRoutingNumber("992000008")
         .build());
 System.out.println(payment.state());                 // ACK_PENDING — the answer is async
 

@@ -4,6 +4,6 @@
 # built-in amount triggers (.11 reject / .22 accept-without-posting / .33 timeout).
 
 [scenarios]
-"091000019" = { action = "reject", reason = "AC04" }   # creditor account closed
+"992000008" = { action = "reject", reason = "AC04" }   # creditor account closed
 "999999992" = { action = "timeout" }                    # the reconciler's nightmare
 # actions: settle | accept-without-posting | reject (+ reason) | timeout

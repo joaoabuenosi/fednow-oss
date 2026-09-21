@@ -23,7 +23,7 @@ Mandatory: `MktPrctc` (fixed registry URL + FedNow id). `Fr`/`To`: `FIId` only,
 `Rltd` max 1.
 
 From the guideline PDF (textual rules):
-- **FedNow Service application identifier: `021150706`.** Participant-sent
+- **FedNow Service application identifier: `993000007`.** Participant-sent
   messages carry it in `To` (and the service uses it in `Fr`; `To` may be
   `PINGREPLY` in admi.011 ping responses).
 - **Service-only elements** (must not be sent by participants): `BizPrcgDt`,

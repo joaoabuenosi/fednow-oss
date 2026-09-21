@@ -33,13 +33,13 @@ curl -s -X POST http://localhost:8090/payments \
     "amount_cents": 125000,
     "debtor_name": "Jane Example",   "debtor_account": "123456789012",
     "creditor_name": "John Example", "creditor_account": "987654321000",
-    "creditor_agent_routing_number": "091000019",
+    "creditor_agent_routing_number": "992000008",
     "category_purpose": "CONS"
   }'
 ```
 
 ```json
-{"idempotency_key":"quickstart-1","state":"ACK_PENDING","message_identification":"20260703021040078QS0001","end_to_end_identification":"QS0001","uetr":null,"queries_sent":0,"rejection_reason":null,"events":4}
+{"idempotency_key":"quickstart-1","state":"ACK_PENDING","message_identification":"20260703991000009QS0001","end_to_end_identification":"QS0001","uetr":null,"queries_sent":0,"rejection_reason":null,"events":4}
 ```
 
 Note the state: **`ACK_PENDING`, not settled.** A FedNow-profile pacs.008
@@ -54,7 +54,7 @@ curl -s http://localhost:8090/payments/quickstart-1
 ```
 
 ```json
-{"idempotency_key":"quickstart-1","state":"SETTLED","message_identification":"20260703021040078QS0001","end_to_end_identification":"QS0001","uetr":null,"queries_sent":0,"rejection_reason":null,"events":5}
+{"idempotency_key":"quickstart-1","state":"SETTLED","message_identification":"20260703991000009QS0001","end_to_end_identification":"QS0001","uetr":null,"queries_sent":0,"rejection_reason":null,"events":5}
 ```
 
 The pacs.002 advice (`ACSC`) arrived on the queue, the background pump
@@ -78,7 +78,7 @@ curl -s -X POST http://localhost:8090/payments \
   -d '{ "reference": "QS0002", "amount_cents": 125011,
     "debtor_name": "Jane Example",   "debtor_account": "123456789012",
     "creditor_name": "John Example", "creditor_account": "987654321000",
-    "creditor_agent_routing_number": "091000019", "category_purpose": "CONS" }'
+    "creditor_agent_routing_number": "992000008", "category_purpose": "CONS" }'
 ```
 
 Moments later:
@@ -103,7 +103,7 @@ curl -s -X POST http://localhost:8090/payments \
   -d '{ "reference": "QS0003", "amount_cents": 125033,
     "debtor_name": "Jane Example",   "debtor_account": "123456789012",
     "creditor_name": "John Example", "creditor_account": "987654321000",
-    "creditor_agent_routing_number": "091000019", "category_purpose": "CONS" }'
+    "creditor_agent_routing_number": "992000008", "category_purpose": "CONS" }'
 ```
 
 Now just watch:
@@ -139,7 +139,7 @@ curl -s -X POST http://localhost:8090/payments \
   -d '{ "reference": "QS0004", "amount_cents": 125000, "category_purpose": "WRONG",
     "debtor_name": "Jane Example",   "debtor_account": "123456789012",
     "creditor_name": "John Example", "creditor_account": "987654321000",
-    "creditor_agent_routing_number": "091000019" }'
+    "creditor_agent_routing_number": "992000008" }'
 ```
 
 ```json
@@ -181,7 +181,7 @@ gw = GatewayClient("http://localhost:8090")
 gw.submit("order-1", reference="ORDER0001", amount_cents=125_000,
           debtor_name="Jane", debtor_account="123456789012",
           creditor_name="John", creditor_account="987654321000",
-          creditor_agent_routing_number="091000019")
+          creditor_agent_routing_number="992000008")
 print(gw.wait_final("order-1").state)   # SETTLED
 ```
 
@@ -193,7 +193,7 @@ gw.submit("order-1", SubmitPaymentRequest.builder()
     .reference("ORDER0001").amountCents(125_000)
     .debtorName("Jane").debtorAccount("123456789012")
     .creditorName("John").creditorAccount("987654321000")
-    .creditorAgentRoutingNumber("091000019").build());
+    .creditorAgentRoutingNumber("992000008").build());
 System.out.println(gw.waitFinal("order-1").state());   // SETTLED
 ```
 

@@ -65,7 +65,7 @@ pub struct PaymentService<S, P> {
 }
 
 /// The FedNow Service application identifier (`To` of every outbound query).
-const FEDNOW_SERVICE_RTN: &str = "021150706";
+const FEDNOW_SERVICE_RTN: &str = "993000007";
 
 impl<S: PaymentStore, P: FedNowPort> PaymentService<S, P> {
     pub fn new(store: S, port: P, sender_routing_number: impl Into<String>) -> Self {

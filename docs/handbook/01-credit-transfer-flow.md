@@ -44,7 +44,8 @@ FedNowIncoming                          ← technical envelope (MQ wire)
 ```
 
 The **Business Application Header** carries the connection party identifiers
-(`Fr` = your routing number, `To` = the service application, `021150706`),
+(`Fr` = your routing number, `To` = the service application, `993000007`),
+<!-- Example identifiers are fictitious; see the handbook README. -->
 names the enclosed message (`MsgDefIdr`), and declares the market practice
 (`frb.fednow.01`). The FedNow profile *removes* the BAH signature slot —
 signatures travel outside the XML (see chapter 3, blocked on the Technical
@@ -134,7 +135,7 @@ curl -s -X POST http://localhost:8090/payments \
   -H "content-type: application/json" \
   -H "Idempotency-Key: demo-0001" \
   -d '{ "sender_reference": "DEMO0001", "amount_cents": 125000,
-        "creditor_agent_routing_number": "091000019",
+        "creditor_agent_routing_number": "992000008",
         "debtor_name": "Jane", "debtor_account": "123456789012",
         "creditor_name": "John", "creditor_account": "987654321000",
         "category_purpose": "CONS" }'

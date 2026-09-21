@@ -95,7 +95,7 @@ fn wrong_root_namespace_is_flagged() {
 #[test]
 fn outgoing_from_participant_is_flagged() {
     // The service application id must be in Fr of an outgoing envelope.
-    let mutated = OUTGOING.replace("<MmbId>021150706</MmbId>", "<MmbId>091000019</MmbId>");
+    let mutated = OUTGOING.replace("<MmbId>993000007</MmbId>", "<MmbId>992000008</MmbId>");
     let env = envelope::parse(&mutated).expect("parse");
     let issues = validate_envelope(&env);
     assert!(

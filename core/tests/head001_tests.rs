@@ -44,7 +44,7 @@ fn parses_fednow_header_into_typed_model() {
         .clearing_system_member_identification
         .as_ref()
         .expect("Fr carries a connection party id");
-    assert_eq!(from_member.member_identification, "021040078");
+    assert_eq!(from_member.member_identification, "991000009");
     // FedNow BAH carries only MmbId — no ClrSysId.
     assert!(from_member.clearing_system_identification.is_none());
 }
@@ -194,7 +194,7 @@ fn creation_date_without_timezone_is_flagged() {
 
 #[test]
 fn to_party_must_address_the_service_application() {
-    let xml = VALID.replace("<MmbId>021150706</MmbId>", "<MmbId>091000019</MmbId>");
+    let xml = VALID.replace("<MmbId>993000007</MmbId>", "<MmbId>992000008</MmbId>");
     assert!(codes(&xml).contains(&"fednow.to.service"));
 }
 
@@ -253,7 +253,7 @@ fn garbage_creation_date_violates_xsd_facet() {
 #[test]
 fn orgid_party_violates_fednow_profile() {
     let xml = VALID.replace(
-        "<Fr>\n    <FIId>\n      <FinInstnId>\n        <ClrSysMmbId>\n          <MmbId>021040078</MmbId>\n        </ClrSysMmbId>\n      </FinInstnId>\n    </FIId>\n  </Fr>",
+        "<Fr>\n    <FIId>\n      <FinInstnId>\n        <ClrSysMmbId>\n          <MmbId>991000009</MmbId>\n        </ClrSysMmbId>\n      </FinInstnId>\n    </FIId>\n  </Fr>",
         "<Fr>\n    <OrgId>\n      <Nm>Some Corporate</Nm>\n    </OrgId>\n  </Fr>",
     );
     let hdr = head001::parse(&xml).unwrap();
@@ -267,8 +267,8 @@ fn orgid_party_violates_fednow_profile() {
 #[test]
 fn clrsysid_in_bah_party_violates_fednow_profile() {
     let xml = VALID.replace(
-        "<ClrSysMmbId>\n          <MmbId>021040078</MmbId>",
-        "<ClrSysMmbId>\n          <ClrSysId><Cd>USABA</Cd></ClrSysId>\n          <MmbId>021040078</MmbId>",
+        "<ClrSysMmbId>\n          <MmbId>991000009</MmbId>",
+        "<ClrSysMmbId>\n          <ClrSysId><Cd>USABA</Cd></ClrSysId>\n          <MmbId>991000009</MmbId>",
     );
     assert!(codes(&xml).contains(&"fednow.party.clrsysid"));
 }
@@ -276,7 +276,7 @@ fn clrsysid_in_bah_party_violates_fednow_profile() {
 #[test]
 fn eti_style_connection_party_id_is_accepted() {
     // Connection party ids may be alphanumeric (ETI or FedNow-assigned).
-    let xml = VALID.replace("021040078", "A1B2C3D4E");
+    let xml = VALID.replace("991000009", "A1B2C3D4E");
     let hdr = head001::parse(&xml).unwrap();
     let issues = validate_head001(&hdr);
     assert!(issues.is_empty(), "ETI must be accepted, got: {issues:#?}");
@@ -284,19 +284,19 @@ fn eti_style_connection_party_id_is_accepted() {
 
 #[test]
 fn short_connection_party_id_is_flagged() {
-    let xml = VALID.replace("021040078", "12345");
+    let xml = VALID.replace("991000009", "12345");
     assert!(codes(&xml).contains(&"fednow.connparty.format"));
 }
 
 #[test]
 fn lowercase_connection_party_id_is_flagged() {
-    let xml = VALID.replace("021040078", "a1b2c3d4e");
+    let xml = VALID.replace("991000009", "a1b2c3d4e");
     assert!(codes(&xml).contains(&"fednow.connparty.format"));
 }
 
 #[test]
 fn all_digit_connection_party_id_with_bad_checksum_is_flagged() {
-    let xml = VALID.replace("021040078", "021040079");
+    let xml = VALID.replace("991000009", "991000008");
     assert!(codes(&xml).contains(&"fednow.aba.checksum"));
 }
 

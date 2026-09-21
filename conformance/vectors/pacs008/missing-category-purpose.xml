@@ -2,7 +2,7 @@
 <Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08">
   <FIToFICstmrCdtTrf>
     <GrpHdr>
-      <MsgId>20260702021040078FIXTURE001</MsgId>
+      <MsgId>20260702991000009FIXTURE001</MsgId>
       <CreDtTm>2026-07-02T10:30:00-05:00</CreDtTm>
       <NbOfTxs>1</NbOfTxs>
       <SttlmInf>
@@ -32,7 +32,7 @@
             <ClrSysId>
               <Cd>USABA</Cd>
             </ClrSysId>
-            <MmbId>021040078</MmbId>
+            <MmbId>991000009</MmbId>
           </ClrSysMmbId>
         </FinInstnId>
       </InstgAgt>
@@ -42,7 +42,7 @@
             <ClrSysId>
               <Cd>USABA</Cd>
             </ClrSysId>
-            <MmbId>091000019</MmbId>
+            <MmbId>992000008</MmbId>
           </ClrSysMmbId>
         </FinInstnId>
       </InstdAgt>
@@ -62,7 +62,7 @@
             <ClrSysId>
               <Cd>USABA</Cd>
             </ClrSysId>
-            <MmbId>021040078</MmbId>
+            <MmbId>991000009</MmbId>
           </ClrSysMmbId>
         </FinInstnId>
       </DbtrAgt>
@@ -72,7 +72,7 @@
             <ClrSysId>
               <Cd>USABA</Cd>
             </ClrSysId>
-            <MmbId>091000019</MmbId>
+            <MmbId>992000008</MmbId>
           </ClrSysMmbId>
         </FinInstnId>
       </CdtrAgt>

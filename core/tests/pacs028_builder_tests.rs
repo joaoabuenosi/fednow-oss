@@ -7,12 +7,12 @@ use fednow_core::validate::validate_pacs028;
 #[test]
 fn built_status_request_round_trips_clean() {
     let xml = Pacs028Builder::new(
-        fednow_message_id("20260702", "021040078", "QUERY001"),
+        fednow_message_id("20260702", "991000009", "QUERY001"),
         "2026-07-02T15:35:00Z",
-        "20260702021040078BUILT0001",
+        "20260702991000009BUILT0001",
         "2026-07-02T15:30:00Z",
-        "021040078",
-        "021150706",
+        "991000009",
+        "993000007",
     )
     .original_end_to_end_identification("E2E-20260702-BUILT-0001")
     .original_uetr("8a562c67-ca16-48ba-b074-65581be6f001")
@@ -29,7 +29,7 @@ fn built_status_request_round_trips_clean() {
             .as_ref()
             .unwrap()
             .original_message_identification,
-        "20260702021040078BUILT0001"
+        "20260702991000009BUILT0001"
     );
     assert_eq!(
         tx.original_uetr.as_deref(),
@@ -40,12 +40,12 @@ fn built_status_request_round_trips_clean() {
 #[test]
 fn unset_optionals_are_omitted() {
     let xml = Pacs028Builder::new(
-        fednow_message_id("20260702", "021040078", "QUERY002"),
+        fednow_message_id("20260702", "991000009", "QUERY002"),
         "2026-07-02T15:35:00Z",
-        "20260702021040078BUILT0002",
+        "20260702991000009BUILT0002",
         "2026-07-02T15:30:00Z",
-        "021040078",
-        "021150706",
+        "991000009",
+        "993000007",
     )
     .to_xml()
     .unwrap();

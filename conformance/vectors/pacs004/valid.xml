@@ -2,7 +2,7 @@
 <Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.004.001.10">
   <PmtRtr>
     <GrpHdr>
-      <MsgId>20260702091000019RETURN0001</MsgId>
+      <MsgId>20260702992000008RETURN0001</MsgId>
       <CreDtTm>2026-07-03T09:00:00-05:00</CreDtTm>
       <NbOfTxs>1</NbOfTxs>
       <SttlmInf>
@@ -15,7 +15,7 @@
     <TxInf>
       <RtrId>RTR-20260703-0001</RtrId>
       <OrgnlGrpInf>
-        <OrgnlMsgId>20260702021040078FIXTURE001</OrgnlMsgId>
+        <OrgnlMsgId>20260702991000009FIXTURE001</OrgnlMsgId>
         <OrgnlMsgNmId>pacs.008.001.08</OrgnlMsgNmId>
         <OrgnlCreDtTm>2026-07-02T10:30:00-05:00</OrgnlCreDtTm>
       </OrgnlGrpInf>
@@ -33,7 +33,7 @@
             <ClrSysId>
               <Cd>USABA</Cd>
             </ClrSysId>
-            <MmbId>091000019</MmbId>
+            <MmbId>992000008</MmbId>
           </ClrSysMmbId>
         </FinInstnId>
       </InstgAgt>
@@ -43,7 +43,7 @@
             <ClrSysId>
               <Cd>USABA</Cd>
             </ClrSysId>
-            <MmbId>021040078</MmbId>
+            <MmbId>991000009</MmbId>
           </ClrSysMmbId>
         </FinInstnId>
       </InstdAgt>

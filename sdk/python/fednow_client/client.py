@@ -84,7 +84,7 @@ class GatewayClient:
     >>> p = gw.submit("order-1", reference="ORDER0001", amount_cents=125000,
     ...               debtor_name="Jane", debtor_account="123456789012",
     ...               creditor_name="John", creditor_account="987654321000",
-    ...               creditor_agent_routing_number="091000019")
+    ...               creditor_agent_routing_number="992000008")
     >>> p = gw.wait_final("order-1")
     >>> p.state
     'SETTLED'

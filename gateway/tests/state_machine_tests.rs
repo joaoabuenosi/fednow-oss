@@ -11,7 +11,7 @@ use fednow_gateway::{
 fn created(key: &str) -> PaymentEvent {
     PaymentEvent::Created {
         idempotency_key: key.to_string(),
-        message_identification: "20260702021040078GW00000001".to_string(),
+        message_identification: "20260702991000009GW00000001".to_string(),
         creation_date_time: "2026-07-02T15:30:00Z".to_string(),
         end_to_end_identification: "E2E-GW-0001".to_string(),
         uetr: Some("8a562c67-ca16-48ba-b074-65581be6f001".to_string()),
@@ -195,11 +195,11 @@ fn advices_map_from_real_pacs002_documents() {
     let xml = Pacs002Builder::new(
         "FEDNOWSVCADVICE000000000000009",
         "2026-07-02T15:30:05Z",
-        "20260702021040078GW00000001",
+        "20260702991000009GW00000001",
         "2026-07-02T15:30:00Z",
         "RJCT",
-        "021040078",
-        "091000019",
+        "991000009",
+        "992000008",
     )
     .reason_code("AC04")
     .to_xml()

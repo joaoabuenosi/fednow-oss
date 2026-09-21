@@ -64,7 +64,7 @@ impl Ctx {
             original_msg_id,
             "2026-07-02T15:30:00Z",
             self.sender_rtn.clone(),
-            "021150706",
+            "993000007",
         )
         .to_xml()
         .expect("builder output")
@@ -117,8 +117,8 @@ fn expect_advice(body: &str, status_code: &str, external_reason: bool) -> Result
 pub fn run(base_url: &str) -> Vec<ScenarioResult> {
     let ctx = Ctx {
         base_url: base_url.trim_end_matches('/').to_string(),
-        sender_rtn: "021040078".to_string(),
-        creditor_rtn: "091000019".to_string(),
+        sender_rtn: "991000009".to_string(),
+        creditor_rtn: "992000008".to_string(),
     };
 
     let mut results = Vec::new();

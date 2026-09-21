@@ -42,7 +42,7 @@ def submit(client, key, amount_cents):
         debtor_account="123456789012",
         creditor_name="John Example",
         creditor_account="987654321000",
-        creditor_agent_routing_number="091000019",
+        creditor_agent_routing_number="992000008",
     )
 
 
@@ -61,7 +61,7 @@ def test_settle_and_idempotent_replay(client):
         debtor_account="123456789012",
         creditor_name="John Example",
         creditor_account="987654321000",
-        creditor_agent_routing_number="091000019",
+        creditor_agent_routing_number="992000008",
     )
     assert replay.state == "SETTLED"
     assert replay.events == settled.events
@@ -95,6 +95,6 @@ def test_profile_violation_never_reaches_the_wire(client):
             debtor_account="123456789012",
             creditor_name="John Example",
             creditor_account="987654321000",
-            creditor_agent_routing_number="091000019",
+            creditor_agent_routing_number="992000008",
         )
     assert "fednow.ctgypurp.known" in exc.value.codes

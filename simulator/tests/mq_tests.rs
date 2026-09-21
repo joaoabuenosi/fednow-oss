@@ -11,7 +11,7 @@ use fednow_sim::{router, SimConfig};
 use http_body_util::BodyExt;
 use tower::ServiceExt;
 
-const PARTICIPANT: &str = "021040078";
+const PARTICIPANT: &str = "991000009";
 
 fn valid_pacs008(amount_cents: u64, reference: &str) -> String {
     Pacs008Builder::new(
@@ -20,7 +20,7 @@ fn valid_pacs008(amount_cents: u64, reference: &str) -> String {
         "E2E-MQTEST-0001",
         amount_cents,
         PARTICIPANT,
-        "091000019",
+        "992000008",
     )
     .uetr("8a562c67-ca16-48ba-b074-65581be6f001")
     .interbank_settlement_date("2026-07-02")
@@ -44,7 +44,7 @@ fn strip_decl(xml: &str) -> &str {
 fn incoming(wrapper: &str, msg_def_idr: &str, biz_msg_idr: &str, document_xml: &str) -> String {
     let bah = Head001Builder::new(
         PARTICIPANT,
-        "021150706",
+        "993000007",
         biz_msg_idr,
         msg_def_idr,
         "2026-07-02T15:30:00Z",
@@ -75,7 +75,7 @@ fn incoming_pacs028(orig_msg_id: &str) -> String {
         r#"<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.028.001.03">
   <FIToFIPmtStsReq>
     <GrpHdr>
-      <MsgId>20260702021040078MQQUERY01</MsgId>
+      <MsgId>20260702991000009MQQUERY01</MsgId>
       <CreDtTm>2026-07-02T15:35:00Z</CreDtTm>
     </GrpHdr>
     <TxInf>
@@ -88,7 +88,7 @@ fn incoming_pacs028(orig_msg_id: &str) -> String {
         <FinInstnId>
           <ClrSysMmbId>
             <ClrSysId><Cd>USABA</Cd></ClrSysId>
-            <MmbId>021040078</MmbId>
+            <MmbId>991000009</MmbId>
           </ClrSysMmbId>
         </FinInstnId>
       </InstgAgt>
@@ -96,7 +96,7 @@ fn incoming_pacs028(orig_msg_id: &str) -> String {
         <FinInstnId>
           <ClrSysMmbId>
             <ClrSysId><Cd>USABA</Cd></ClrSysId>
-            <MmbId>021150706</MmbId>
+            <MmbId>993000007</MmbId>
           </ClrSysMmbId>
         </FinInstnId>
       </InstdAgt>
@@ -107,7 +107,7 @@ fn incoming_pacs028(orig_msg_id: &str) -> String {
     incoming(
         "FedNowPaymentStatusRequest",
         "pacs.028.001.03",
-        "20260702021040078MQQUERY01",
+        "20260702991000009MQQUERY01",
         &doc,
     )
 }
@@ -244,7 +244,7 @@ async fn profile_invalid_message_is_rejected_asynchronously_with_simv() {
         "E2E-MQTEST-0002",
         5_000,
         PARTICIPANT,
-        "091000019",
+        "992000008",
     )
     .to_xml()
     .unwrap();

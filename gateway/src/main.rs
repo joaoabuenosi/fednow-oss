@@ -13,7 +13,7 @@ async fn main() {
     let sim_url =
         std::env::var("FEDNOW_GW_SIM_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
     let sender_rtn =
-        std::env::var("FEDNOW_GW_SENDER_RTN").unwrap_or_else(|_| "021040078".to_string());
+        std::env::var("FEDNOW_GW_SENDER_RTN").unwrap_or_else(|_| "991000009".to_string());
     let db_path = std::env::var("FEDNOW_GW_DB").unwrap_or_else(|_| "fednow-gateway.db".to_string());
     let reconcile = ReconcileConfig {
         timeout_secs: env_i64("FEDNOW_GW_TIMEOUT_SECS", 20),
