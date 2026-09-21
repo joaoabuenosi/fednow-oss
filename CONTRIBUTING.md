@@ -22,6 +22,34 @@ is to pick an open issue or open a discussion before writing code.
 Short imperative subject line (max ~72 chars), body explaining *why* when it isn't
 obvious. Reference issues with `#N`.
 
+## Rehearsing a release
+
+A tag push is irreversible: by the time a release step fails, the tag exists and a
+half-finished release is already public. That is exactly how v0.3.0 shipped with zero
+assets. So rehearse first.
+
+From the **Actions** tab, pick the **Release** workflow, click **Run workflow**, leave
+the ref on `main` (or the release-prep branch) and leave **`dry_run` checked** — it is
+checked by default. The run executes the same steps a tag push would: the tag/version
+guard (against a synthetic `v<workspace version>` tag built from `Cargo.toml`), the test
+suite, the release build, both SBOMs, the fail-fast checks on each SBOM, and the
+checksums. It then uploads the whole asset set as the `release-assets` artifact and
+prints the checksums to the run summary.
+
+It does **not** sign and does **not** create a release. Signing and publishing live in a
+separate `publish` job that a dry run skips, so the dry-run path is never granted
+`id-token: write` or `contents: write`.
+
+Only once that run is green should the tag be pushed:
+
+```sh
+git tag -a vX.Y.Z <merge-sha> -m "vX.Y.Z" && git push origin vX.Y.Z
+```
+
+Unchecking `dry_run` is the recovery path, not the normal one: it publishes a tag that
+has *already* been pushed, and the run must be started from that tag's ref (the guard
+refuses a branch, because cosign binds the signing certificate to the ref).
+
 ## Getting started
 
 ```sh
