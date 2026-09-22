@@ -6,7 +6,7 @@ The project site, built with [Astro Starlight](https://starlight.astro.build/).
 npm ci
 npm run dev      # sync + dev server
 npm run build    # sync + static build into dist/
-npm run check    # dependency audit + the nine output checks + their self-test
+npm run check    # dependency audit + the nine output checks + two self-tests
 ```
 
 Node 22+ (`.nvmrc`). **Run it from a full checkout** — the build reads markdown from the
@@ -148,6 +148,41 @@ first, because if the unmodified build does not pass cleanly, none of the negati
 prove anything.
 
 A check that cannot fail is not a check. This is what stops one shipping.
+
+### The same, for the facts the pages derive
+
+`scripts/selftest-project-facts.sh` runs after it, and applies that rule to the other half
+of the promise. The output checks guard what the built pages *say*; the extractors in
+`project-facts.mjs` and `sync-docs.mjs` decide what the pages are *allowed* to say — the
+version, which release started signing, the release asset names, both verification
+commands. If one of those quietly returned `undefined` instead of throwing, the site would
+publish "verify with " and nobody would notice.
+
+So the self-test builds a throwaway repository root (every top-level entry symlinked back
+to the real checkout, except a writable copy of `SECURITY.md`), rewords **one** fact in it,
+runs `scripts/derive-facts.mjs` against it, and asserts the failure carries **that fact's
+own message**. A non-zero exit is not enough: every one of these rewordings would also
+"fail" if `project-facts.mjs` had a syntax error, and the suite would look green while
+testing nothing. Fourteen cases, positive control first, and the control asserts the real
+derived values rather than just exit 0 — if the extractors stopped finding the assets
+altogether, every negative case would still pass for the wrong reason.
+
+Three of the fourteen cover **ambiguity** rather than absence. Classifying asset-table rows
+with `.find()` silently answers "the first row that matches", which becomes a different row
+the moment the table grows. Two rows matching "provenance" does not mean one of them is the
+provenance asset — it means `SECURITY.md` now says two things, and publishing whichever was
+written first is the same class of bug this module exists to prevent. So `exactlyOneRow()`
+treats a second match as an error with the same standing as no match, and names every row
+that matched.
+
+`scripts/derive-facts.mjs` is useful on its own, too: it prints everything the site would
+be allowed to state from a checkout, which is otherwise only visible by building the site
+and reading `src/generated/`.
+
+```sh
+node scripts/derive-facts.mjs          # what this checkout derives
+bash scripts/selftest-project-facts.sh # prove each extractor still refuses a reworded source
+```
 
 When adding a page: put the mark-free wording in `title`/`description`, and the descriptive
 wording in the body.

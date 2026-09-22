@@ -9,7 +9,7 @@
     "dev": "npm run sync && ASTRO_TELEMETRY_DISABLED=1 astro dev",
     "build": "npm run sync && ASTRO_TELEMETRY_DISABLED=1 astro build",
     "preview": "astro preview",
-    "check": "npm audit --omit=dev --audit-level=high && bash scripts/check-build.sh && bash scripts/selftest-checks.sh",
+    "check": "npm audit --omit=dev --audit-level=high && bash scripts/check-build.sh && bash scripts/selftest-checks.sh && bash scripts/selftest-project-facts.sh",
     "render-og": "bash scripts/render-og.sh"
   },
   "dependencies": {

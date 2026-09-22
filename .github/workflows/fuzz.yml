@@ -1,0 +1,97 @@
+name: Fuzz
+
+# Nightly, not per-pull-request, and that is the point: fuzzing is a search, and
+# a search that is cut off after ninety seconds on every PR finds what the last
+# run already found. A scheduled job gets a fresh budget against the current
+# `main` and reports what it actually discovered.
+#
+# What it guards: `fednow_core::pacs008::parse` and `pacs002::parse` are the
+# functions a deployment points at bytes that arrived over the network, and the
+# validators run on whatever those two accept. The contract is that no input —
+# malformed, truncated, deeply nested, adversarially encoded — makes either
+# panic. A panic inside a library is an outage in the gateway embedding it.
+#
+# A red run here is a bug report against the parser, not CI noise. The crashing
+# input is uploaded as an artifact; it belongs in an issue with a reproducer and
+# then in core/tests/ as a regression test.
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      max_total_time:
+        description: "Seconds to fuzz each target."
+        type: string
+        default: "300"
+
+# Default to nothing; each job asks for exactly what it needs.
+permissions: {}
+
+concurrency:
+  group: fuzz-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  fuzz:
+    name: cargo-fuzz (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    # Reads the tree and nothing else. It does not open the issue a crash
+    # deserves — that is a human decision about a real bug, and a token that
+    # could file one is a token this job does not need.
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - pacs008_parse_validate
+          - pacs002_parse_validate
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # cargo-fuzz needs nightly: libFuzzer is reached through `-Zsanitizer`,
+      # which is not available on stable. This is the only place in this
+      # repository that is not built with the stable toolchain.
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        with:
+          toolchain: nightly
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: fuzz
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --version 0.13.2 --locked
+
+      # The corpus is derived from the fixtures rather than committed; see the
+      # comment at the top of the script for why. Without seeds libFuzzer spends
+      # its whole budget rediscovering XML syntax and never reaches a validator.
+      - name: Seed the corpus from the repository's fixtures
+        run: ./fuzz/seed-corpus.sh
+
+      - name: Fuzz ${{ matrix.target }}
+        env:
+          # Five minutes per target by default: long enough to be a real search
+          # on a corpus this small, short enough that two targets plus the build
+          # fit comfortably inside a nightly slot.
+          MAX_TOTAL_TIME: ${{ inputs.max_total_time || '300' }}
+        run: |
+          set -euo pipefail
+          cargo fuzz run "${{ matrix.target }}" -- \
+            -max_total_time="$MAX_TOTAL_TIME" \
+            -print_final_stats=1
+
+      # Only on failure, and only the crash: the corpus is regenerable, the
+      # input that broke the parser is not.
+      - name: Upload the crashing input
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}/
+          if-no-files-found: warn
+          retention-days: 30

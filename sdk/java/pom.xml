@@ -25,12 +25,40 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
 
+  <!--
+    Jackson's version is set here, once, by importing its own BOM rather than
+    version-pinning jackson-databind directly.
+
+    This is not style. jackson-databind 2.18.2 was pinned directly, and the nine
+    advisories OpenSSF Scorecard reported against this repository were split
+    across jackson-databind *and* jackson-core — and jackson-core was never
+    named in this file, because databind drags it in transitively. A direct pin
+    only makes the version of the artifact you happen to have typed out visible;
+    the BOM makes every Jackson artifact in the tree move together, so there is
+    exactly one number to bump and no second one hiding behind it.
+
+    2.18.11 is the current patch of the 2.18 line and clears all nine
+    (the highest fix floor among them was 2.18.9). Staying on 2.18.x keeps this
+    a patch-level move: no Jackson minor upgrade, no behaviour change to review.
+  -->
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>com.fasterxml.jackson</groupId>
+        <artifactId>jackson-bom</artifactId>
+        <version>2.18.11</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
   <dependencies>
-    <!-- The single runtime dependency: JSON, the banking-world standard. -->
+    <!-- The single runtime dependency: JSON, the banking-world standard.
+         Version comes from jackson-bom above. -->
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
-      <version>2.18.2</version>
     </dependency>
 
     <dependency>

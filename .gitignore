@@ -40,5 +40,9 @@ CLAUDE.md
 *.cdx.json
 *.spdx.json
 
-# Sigstore signature bundles
+# Sigstore signature bundles and SLSA build provenance
+*.sigstore.json
+*.intoto.jsonl
+# The name v0.3.1 released its bundles under, kept so a local rehearsal of that
+# tag does not leave untracked files behind.
 *.cosign.bundle

@@ -1,0 +1,16 @@
+# Build output.
+target/
+
+# Inputs that made a target crash, hang or run out of memory. cargo-fuzz writes
+# them here. They are evidence, not source: a crash gets a reproducer attached
+# to an issue, and a regression test in core/tests/, not a commit to this
+# directory.
+artifacts/
+
+# Seeded by ./seed-corpus.sh from core/tests/fixtures and conformance/vectors,
+# then grown by libFuzzer itself. Derived from files already in the repository,
+# so committing it would be a second copy of the fixtures that silently rots
+# when the originals change.
+corpus/
+
+coverage/

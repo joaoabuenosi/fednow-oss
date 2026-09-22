@@ -41,9 +41,35 @@ FEDNOW_GW_URL=http://localhost:8090 python -m pytest sdk/python -q              
 FEDNOW_GW_URL=http://localhost:8090 mvn -q -B -f sdk/java/pom.xml test
 ```
 
-`audit.yml` runs `cargo audit` on every lockfile change and daily. Dependabot
-opens weekly PRs (Mondays): cargo minor/patch are grouped, majors come alone;
+`ci.yml` also has two gated jobs that run only when a diff reaches them: **`site`**
+(build + trademark/privacy checks) and **`docker`**, which runs the quickstart —
+`docker compose build`, `up -d`, then both services must answer `/healthz` on
+their published ports — whenever `gateway/**`, `simulator/**`, `core/**`,
+`Cargo.toml`/`Cargo.lock`, `docker-compose.yml` or `ci.yml` changes. That job is
+the only thing that proves a binary built in the Dockerfile's build stage can
+actually start in its runtime stage; `cargo test` runs against the runner's
+libraries, not the image's. It is why **both Dockerfile stages must stay on the
+same Debian release** — a glibc skew builds cleanly and dies at startup.
+
+`audit.yml` runs `cargo audit` on every lockfile change and daily. `codeql.yml`
+runs CodeQL on every PR and push to `main` over Rust, Python, Java and the
+workflow files. `fuzz.yml` runs the `cargo-fuzz` targets nightly; to run one
+locally (nightly toolchain, see [`fuzz/README.md`](fuzz/README.md)):
+
+```sh
+./fuzz/seed-corpus.sh
+cargo +nightly fuzz run pacs008_parse_validate -- -max_total_time=120
+```
+
+Dependabot opens weekly PRs (Mondays) for cargo, GitHub Actions, maven
+(`sdk/java`), npm (`site`), docker (both Dockerfiles) and pip
+(`.github/requirements`): cargo minor/patch are grouped, majors come alone;
 triage with `/esteira:deps`.
+
+Pinned by hash and therefore only updated by something that updates them: the
+Dockerfile base images (by digest), `.github/requirements/pytest.txt` (by
+artifact hash) and every action `uses:` (by commit SHA). Both Dockerfile stages
+must stay on the same Debian release.
 
 ## Rules
 
@@ -92,12 +118,21 @@ triage with `/esteira:deps`.
 - **Docs follow behaviour**: visible change → README / QUICKSTART / handbook /
   CHANGELOG in the same PR.
 - **The site derives, never duplicates**: a fact the repository already states
-  (version, release status, SBOM formats, workflow cadences) is parsed at build
-  time by `site/scripts/project-facts.mjs`, not typed into a page. Before adding
-  a fact to a hand-authored page, check whether a repository file owns it; if it
-  does, derive it. The `site` job in `ci.yml` builds and checks the site on any
-  PR that touches a file the site reads, so a change that would falsify it fails
-  in review rather than after deploy.
+  (version, release status, SBOM formats, release asset names, workflow
+  cadences) is parsed at build time by `site/scripts/project-facts.mjs`, not
+  typed into a page; the two verification commands come out of `SECURITY.md` the
+  same way, via `sync-docs.mjs`. Before adding a fact to a hand-authored page,
+  check whether a repository file owns it; if it does, derive it. **No page
+  names a release asset itself** — signature bundles were renamed from
+  `.cosign.bundle` to `.sigstore.json` without touching a page, and that is the
+  property to preserve. The `site` job in `ci.yml` builds and checks the site on
+  any PR that touches a file the site reads, so a change that would falsify it
+  fails in review rather than after deploy. Rewording a fact in `SECURITY.md`
+  is *meant* to break the build: `npm run check` runs
+  `scripts/selftest-project-facts.sh`, which rewords each fact in a throwaway
+  copy and requires the extractor to refuse it with that fact's own message. A
+  new derived fact needs a case there; `node scripts/derive-facts.mjs` prints
+  what a checkout currently derives.
 
 ## Release
 

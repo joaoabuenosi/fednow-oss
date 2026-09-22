@@ -1,6 +1,10 @@
 [workspace]
 resolver = "2"
 members = ["core", "simulator", "gateway", "conformance"]
+# fuzz/ is a cargo-fuzz crate: nightly-only, builds with a sanitizer, and
+# depends on libfuzzer-sys. Excluding it keeps `cargo build/clippy/test` on
+# stable working for anyone who never touches it. See fuzz/README.md.
+exclude = ["fuzz"]
 
 [workspace.package]
 version = "0.3.1"
