@@ -525,16 +525,21 @@ impl<S: PaymentStore, P: FedNowPort> PaymentService<S, P> {
     }
 
     /// The payment, if it exists and is `HELD`, and the reason is a code.
+    ///
+    /// Checked in this order on purpose: the payment first (`404`), then its
+    /// state (`409`), then the reason (`400`). A caller learns what is wrong
+    /// with the target before being asked to fix its request; a bad reason
+    /// only matters for a payment that could actually be resolved.
     fn held(&self, idempotency_key: &str, reason: &str) -> Result<Payment, ServiceError> {
-        if sanitize_reason(reason) != reason {
-            return Err(ServiceError::InvalidReason);
-        }
         let payment = self
             .store
             .load(idempotency_key)
             .ok_or_else(|| ServiceError::UnknownPayment(idempotency_key.to_string()))?;
         if payment.state != PaymentState::Held {
             return Err(ServiceError::NotHeld(payment.state));
+        }
+        if sanitize_reason(reason) != reason {
+            return Err(ServiceError::InvalidReason);
         }
         Ok(payment)
     }

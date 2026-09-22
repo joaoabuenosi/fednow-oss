@@ -230,6 +230,10 @@ impl ApiKeys {
             let digest = parse_key(OPERATOR_API_KEYS_ENV, position, key)?;
             parsed.push((digest, label.to_string()));
         }
+        // Plain `==` / `contains` on digests is fine here, unlike in
+        // `identify`: this runs once, at startup, over the operator's own
+        // configuration. No request can reach it or time it, so there is no
+        // secret-dependent timing to hide.
         let inner = &self.inner;
         let in_other_tier = |d: &KeyDigest| inner.full.contains(d) || inner.read_only.contains(d);
         if parsed.iter().enumerate().any(|(i, (d, _))| {

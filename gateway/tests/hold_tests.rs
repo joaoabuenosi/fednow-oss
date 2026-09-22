@@ -187,9 +187,29 @@ fn a_hold_parks_the_checked_message_and_records_only_its_digest() {
         json.starts_with(r#"{"HoldParked":{"message_sha256":""#),
         "{json}"
     );
-    for secret in ["123456789012", "987654321000", "Jane", "John", "992000008"] {
-        assert!(!json.contains(secret), "{secret} leaked: {json}");
-    }
+    assert_no_payment_data(&json);
+}
+
+/// Fixture values that must never reach the audit trail, each with a label.
+/// A failure names the label only: neither the value nor the audited JSON
+/// goes to the test output, which is public in CI.
+const PAYMENT_DATA: [(&str, &str); 7] = [
+    ("debtor account", "123456789012"),
+    ("creditor account", "987654321000"),
+    ("debtor name", "Jane"),
+    ("creditor name", "John"),
+    ("creditor agent routing number", "992000008"),
+    ("amount in cents", "125000"),
+    ("amount", "1250.00"),
+];
+
+fn assert_no_payment_data(audited: &str) {
+    let found: Vec<&str> = PAYMENT_DATA
+        .iter()
+        .filter(|(_, value)| audited.contains(value))
+        .map(|(label, _)| *label)
+        .collect();
+    assert!(found.is_empty(), "the audit trail carries: {found:?}");
 }
 
 fn svc_parked<S: PaymentStore>(svc: &Svc<S>, key: &str) -> String {
@@ -253,18 +273,7 @@ fn release_sends_exactly_the_parked_message_once() {
 
     // The whole audit trail of a held-then-released payment carries no
     // account, name, amount or counterparty routing number.
-    let audit = serde_json::to_string(&p.events[2..]).unwrap();
-    for secret in [
-        "123456789012",
-        "987654321000",
-        "Jane",
-        "John",
-        "992000008",
-        "125000",
-        "1250.00",
-    ] {
-        assert!(!audit.contains(secret), "{secret} leaked: {audit}");
-    }
+    assert_no_payment_data(&serde_json::to_string(&p.events[2..]).unwrap());
 }
 
 #[test]
@@ -397,6 +406,19 @@ fn a_reason_must_be_a_code() {
     }
     assert_eq!(svc.load("why-1").unwrap().events, before.events);
     assert!(port.sent().is_empty());
+
+    // The target is judged before the request: an unknown payment is 404 and
+    // one that is not held is 409, whatever the reason says.
+    assert!(matches!(
+        svc.release("no-such-key", OPERATOR, "Not A Code", HELD_AT + 1),
+        Err(ServiceError::UnknownPayment(_))
+    ));
+    svc.cancel("why-1", OPERATOR, "reviewed_ko", HELD_AT + 2)
+        .unwrap();
+    assert!(matches!(
+        svc.release("why-1", OPERATOR, "Not A Code", HELD_AT + 3),
+        Err(ServiceError::NotHeld(PaymentState::Cancelled))
+    ));
 }
 
 #[test]
