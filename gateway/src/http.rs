@@ -1,11 +1,18 @@
 //! The northbound REST port.
 //!
-//! | Method | Path | Purpose |
-//! |---|---|---|
-//! | POST | `/payments` | submit a payment — **`Idempotency-Key` header mandatory** |
-//! | GET | `/payments/{key}` | current state of a payment |
-//! | POST | `/payments/{key}/reconcile` | drive one reconciliation pass (also runs on the background sweeper) |
-//! | GET | `/healthz` | liveness |
+//! | Method | Path | Access | Purpose |
+//! |---|---|---|---|
+//! | POST | `/payments` | full | submit a payment — **`Idempotency-Key` header mandatory** |
+//! | GET | `/payments/{key}` | read | current state of a payment |
+//! | POST | `/payments/{key}/reconcile` | full | drive one reconciliation pass (also runs on the background sweeper) |
+//! | GET | `/ops/summary` | read | operational snapshot |
+//! | GET | `/healthz` | public | liveness |
+//!
+//! Every route but `/healthz` needs `Authorization: Bearer <key>` — see
+//! [`crate::auth`]. Routes are registered through [`Routes`], which records
+//! each one's access level; [`route_table`] returns that record, and one
+//! middleware enforces it. A route the table does not know requires a
+//! full-access key.
 //!
 //! The service layer is blocking (domain + `ureq`); handlers hop through
 //! `spawn_blocking`. Clocks live here, not in the domain: `now` and calendar
@@ -14,13 +21,15 @@
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::handler::Handler;
+use axum::http::{HeaderMap, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{on, MethodFilter};
 use axum::{Json, Router};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
+use crate::auth::{authorize, Access, ApiKeys, Guard, RouteSpec};
 use crate::payment::Payment;
 use crate::service::{PaymentService, ServiceError, SubmitRequest};
 use crate::southbound::FedNowPort;
@@ -36,6 +45,9 @@ pub struct ReconcileConfig {
 pub struct AppState<S, P> {
     pub service: PaymentService<S, P>,
     pub reconcile: ReconcileConfig,
+    /// Northbound credentials. Required: an [`ApiKeys`] cannot be empty, so
+    /// there is no router without authentication.
+    pub api_keys: ApiKeys,
 }
 
 /// Build the HTTP router over any store/port combination.
@@ -44,16 +56,116 @@ where
     S: PaymentStore + Send + Sync + 'static,
     P: FedNowPort + Send + Sync + 'static,
 {
-    Router::new()
-        .route("/healthz", get(|| async { "ok" }))
-        .route("/payments", post(submit_payment::<S, P>))
-        .route("/payments/{key}", get(get_payment::<S, P>))
-        .route("/payments/{key}/reconcile", post(reconcile_payment::<S, P>))
-        .route("/ops/summary", get(ops_summary::<S, P>))
-        .with_state(state)
+    router_and_table(state).0
 }
 
-/// Operational snapshot for probes and 24x7 operators.
+/// Every registered route with its access level — the same record the auth
+/// middleware enforces. Tests walk it so a new route cannot ship unchecked.
+pub fn route_table<S, P>(state: Arc<AppState<S, P>>) -> Vec<RouteSpec>
+where
+    S: PaymentStore + Send + Sync + 'static,
+    P: FedNowPort + Send + Sync + 'static,
+{
+    router_and_table(state).1
+}
+
+fn router_and_table<S, P>(state: Arc<AppState<S, P>>) -> (Router, Vec<RouteSpec>)
+where
+    S: PaymentStore + Send + Sync + 'static,
+    P: FedNowPort + Send + Sync + 'static,
+{
+    let keys = state.api_keys.clone();
+    let Routes { router, table } = Routes::new()
+        .add(Verb::Get, "/healthz", Access::Public, healthz)
+        .add(
+            Verb::Post,
+            "/payments",
+            Access::Write,
+            submit_payment::<S, P>,
+        )
+        .add(
+            Verb::Get,
+            "/payments/{key}",
+            Access::Read,
+            get_payment::<S, P>,
+        )
+        .add(
+            Verb::Post,
+            "/payments/{key}/reconcile",
+            Access::Write,
+            reconcile_payment::<S, P>,
+        )
+        .add(Verb::Get, "/ops/summary", Access::Read, ops_summary::<S, P>);
+    let guard = Guard {
+        keys,
+        routes: Arc::new(table.clone()),
+    };
+    // `route_layer`: runs after routing, so the middleware sees the matched
+    // route template. It covers every route registered above.
+    let router = router
+        .route_layer(axum::middleware::from_fn_with_state(guard, authorize))
+        .with_state(state);
+    (router, table)
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Verb {
+    Get,
+    Post,
+}
+
+impl Verb {
+    fn method(self) -> Method {
+        match self {
+            Verb::Get => Method::GET,
+            Verb::Post => Method::POST,
+        }
+    }
+
+    fn filter(self) -> MethodFilter {
+        match self {
+            Verb::Get => MethodFilter::GET,
+            Verb::Post => MethodFilter::POST,
+        }
+    }
+}
+
+/// Router builder that records each route's access level as it is added,
+/// so the access table and the router cannot disagree.
+struct Routes<St> {
+    router: Router<St>,
+    table: Vec<RouteSpec>,
+}
+
+impl<St: Clone + Send + Sync + 'static> Routes<St> {
+    fn new() -> Self {
+        Self {
+            router: Router::new(),
+            table: Vec::new(),
+        }
+    }
+
+    fn add<H, T>(mut self, verb: Verb, path: &'static str, access: Access, handler: H) -> Self
+    where
+        H: Handler<T, St>,
+        T: 'static,
+    {
+        self.router = self.router.route(path, on(verb.filter(), handler));
+        self.table.push(RouteSpec {
+            method: verb.method(),
+            path,
+            access,
+        });
+        self
+    }
+}
+
+async fn healthz() -> &'static str {
+    "ok"
+}
+
+/// Operational snapshot for 24x7 operators and monitoring (read-only keys
+/// suffice). Not a probe: it needs a credential; `/healthz` does not.
 #[derive(Debug, Serialize)]
 struct OpsSummaryView {
     payments_total: usize,

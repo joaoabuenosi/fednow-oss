@@ -79,10 +79,18 @@ jobs:
 
       - name: Build the stack
         run: cargo build -p fednow-sim -p fednow-gateway
+      # The gateway refuses to start without an API key (#59). A fresh random
+      # one per run, masked in the log: nothing to store, nothing to leak.
+      - name: Generate a throwaway gateway API key
+        run: |
+          key="$(openssl rand -hex 32)"
+          echo "::add-mask::$key"
+          echo "FEDNOW_GW_API_KEY=$key" >> "$GITHUB_ENV"
       - name: Launch sim + gateway (MQ mode, fast reconcile timings)
         run: |
           ./target/debug/fednow-sim &
-          FEDNOW_GW_SOUTHBOUND=mq FEDNOW_GW_SWEEP_SECS=1 \
+          FEDNOW_GW_API_KEYS="$FEDNOW_GW_API_KEY" \
+            FEDNOW_GW_SOUTHBOUND=mq FEDNOW_GW_SWEEP_SECS=1 \
             FEDNOW_GW_TIMEOUT_SECS=3 FEDNOW_GW_BACKOFF_SECS=2 \
             FEDNOW_GW_DB=/tmp/sdk-ci-gateway.db \
             ./target/debug/fednow-gateway &
@@ -112,10 +120,18 @@ jobs:
           cache: maven
       - name: Build the stack
         run: cargo build -p fednow-sim -p fednow-gateway
+      # The gateway refuses to start without an API key (#59). A fresh random
+      # one per run, masked in the log: nothing to store, nothing to leak.
+      - name: Generate a throwaway gateway API key
+        run: |
+          key="$(openssl rand -hex 32)"
+          echo "::add-mask::$key"
+          echo "FEDNOW_GW_API_KEY=$key" >> "$GITHUB_ENV"
       - name: Launch sim + gateway (MQ mode, fast reconcile timings)
         run: |
           ./target/debug/fednow-sim &
-          FEDNOW_GW_SOUTHBOUND=mq FEDNOW_GW_SWEEP_SECS=1 \
+          FEDNOW_GW_API_KEYS="$FEDNOW_GW_API_KEY" \
+            FEDNOW_GW_SOUTHBOUND=mq FEDNOW_GW_SWEEP_SECS=1 \
             FEDNOW_GW_TIMEOUT_SECS=3 FEDNOW_GW_BACKOFF_SECS=2 \
             FEDNOW_GW_DB=/tmp/java-sdk-ci-gateway.db \
             ./target/debug/fednow-gateway &
@@ -367,6 +383,15 @@ jobs:
           # This job only reads the tree; it never pushes.
           persist-credentials: false
 
+      # The gateway refuses to start without an API key (#59), and compose
+      # refuses to interpolate the file without FEDNOW_GW_API_KEY. Same command
+      # QUICKSTART.md step 1 gives the reader, masked in the log.
+      - name: Generate a throwaway gateway API key
+        run: |
+          key="$(openssl rand -hex 32)"
+          echo "::add-mask::$key"
+          echo "FEDNOW_GW_API_KEY=$key" >> "$GITHUB_ENV"
+
       # The exact command QUICKSTART.md tells a newcomer to run, minus the `up`.
       # Base images are pinned by digest in both Dockerfiles, so what is built
       # here is what a reader builds.
@@ -416,6 +441,17 @@ jobs:
 
           wait_for fednow-sim     http://localhost:8080/healthz
           wait_for fednow-gateway http://localhost:8090/healthz
+
+          # The key reached the container: anonymous is refused, keyed is served.
+          anon="$(curl -s -o /dev/null -w '%{http_code}' -m 5 http://localhost:8090/ops/summary)"
+          keyed="$(curl -s -o /dev/null -w '%{http_code}' -m 5 \
+            -H "Authorization: Bearer $FEDNOW_GW_API_KEY" http://localhost:8090/ops/summary)"
+          echo "  fednow-gateway: /ops/summary anonymous -> ${anon}, with key -> ${keyed}"
+          if [ "$anon" != "401" ] || [ "$keyed" != "200" ]; then
+            echo "::error::expected 401 without a key and 200 with FEDNOW_GW_API_KEY"
+            docker compose logs --no-color fednow-gateway
+            exit 1
+          fi
 
           echo
           echo "Both services are up and serving. The build-stage binaries start in the runtime stage."

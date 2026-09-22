@@ -18,6 +18,10 @@ chrono = { version = "0.4", default-features = false, features = ["std", "clock"
 serde = { workspace = true }
 serde_json = "1"
 rusqlite = { version = "0.40", features = ["bundled"] }
+# Northbound API keys: SHA-256 digests (ring) compared in constant time
+# (subtle). Both were already in the tree via ureq's TLS stack.
+ring = "0.17"
+subtle = "2.6"
 
 [dev-dependencies]
 fednow-sim = { path = "../simulator" }

@@ -6,18 +6,22 @@ gateway itself: https://github.com/joaoabuenosi/fednow-oss
 
 from .client import (
     FINAL_STATES,
+    Forbidden,
     GatewayClient,
     GatewayError,
     Payment,
     ProfileViolation,
+    Unauthorized,
     UnknownPayment,
 )
 
 __all__ = [
     "FINAL_STATES",
+    "Forbidden",
     "GatewayClient",
     "GatewayError",
     "Payment",
     "ProfileViolation",
+    "Unauthorized",
     "UnknownPayment",
 ]

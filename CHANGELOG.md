@@ -8,6 +8,38 @@ All notable changes to this project are documented here. The format follows
 
 ### Security
 
+- **The gateway REST API is authenticated, and fails closed (#59).** Until
+  now anything that could reach `:8090` could submit a payment. Every route
+  except `GET /healthz` now requires `Authorization: Bearer <key>`:
+
+  - `FEDNOW_GW_API_KEYS`: comma-separated full-access keys. **Required**:
+    unset or empty, the gateway refuses to start, before it opens its
+    database or binds its port. There is no switch that disables
+    authentication. Keys shorter than 32 characters, containing anything
+    other than visible ASCII, or listed in both tiers are refused at
+    startup too, and the error gives the key's position, never its value.
+  - `FEDNOW_GW_READ_API_KEYS`: optional read-only keys for monitoring
+    (`GET /payments/{key}`, `GET /ops/summary`). A read-only key on submit or
+    reconcile gets `403`. A missing or unknown key gets `401` with
+    `WWW-Authenticate: Bearer`.
+  - Only SHA-256 digests of the keys are kept. A presented key is compared
+    against every digest in constant time, and keys never reach a log line or
+    a response body.
+  - Routes are registered through a builder that records each one's access
+    level, and one middleware enforces that record. A route missing from the
+    record needs a full-access key. A test walks the record, checks that every
+    protected route refuses anonymous and wrong credentials, and fails when a
+    route is added until its access level is stated.
+
+  **Breaking.** Clients must send a key. The quickstart now starts with
+  `export FEDNOW_GW_API_KEY="$(openssl rand -hex 32)"`; `docker-compose.yml`
+  passes it through and stops with a clear message if it is unset. Both SDKs
+  take an API key: `GatewayClient(url, api_key=...)` in Python,
+  `new GatewayClient(url, apiKey)` in Java. Both raise typed `Unauthorized` /
+  `Forbidden` errors. In `fednow-gateway`, `http::AppState` gained a required
+  `api_keys` field. The gateway still speaks plain HTTP, so put TLS in front of
+  it.
+
 - **Release signatures are named so that tools can find them, and SLSA build
   provenance is published alongside them.** v0.3.1 is signed — keylessly, with
   the signature in Rekor — but every asset's bundle was called

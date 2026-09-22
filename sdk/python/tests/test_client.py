@@ -6,7 +6,17 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from fednow_client import GatewayClient, Payment, ProfileViolation, UnknownPayment
+from fednow_client import (
+    Forbidden,
+    GatewayClient,
+    Payment,
+    ProfileViolation,
+    Unauthorized,
+    UnknownPayment,
+)
+
+# A made-up key for the stub; it authorizes nothing anywhere.
+TEST_KEY = "test-only-api-key-0123456789abcdef0123456789"
 
 PAYMENT = {
     "idempotency_key": "k1",
@@ -61,6 +71,10 @@ class StubHandler(BaseHTTPRequestHandler):
             gets = sum(1 for c in StubHandler.calls if c[:2] == ("GET", "/payments/k1"))
             state = "ACK_PENDING" if gets < 2 else "SETTLED"
             self._send(200, {**PAYMENT, "state": state, "events": 4 if gets < 2 else 5})
+        elif self.path == "/payments/deny401":
+            self._send(401, {"error": "unauthorized"})
+        elif self.path == "/payments/deny403":
+            self._send(403, {"error": "forbidden"})
         elif self.path == "/healthz":
             self._send(200, b"ok", "text/plain")
         else:
@@ -153,3 +167,28 @@ def test_amount_must_be_int(gateway_stub):
 def test_healthy(gateway_stub):
     assert GatewayClient(gateway_stub).healthy()
     assert not GatewayClient("http://127.0.0.1:1").healthy()
+
+
+def test_api_key_travels_as_bearer_header(gateway_stub):
+    client = GatewayClient(gateway_stub, api_key=TEST_KEY)
+    submit(client)
+    client.get("k1")
+    for _, _, headers, _ in StubHandler.calls:
+        assert headers.get("Authorization") == f"Bearer {TEST_KEY}"
+
+
+def test_no_api_key_sends_no_authorization_header(gateway_stub):
+    submit(GatewayClient(gateway_stub))
+    _, _, headers, _ = StubHandler.calls[0]
+    assert "Authorization" not in headers
+
+
+def test_401_and_403_raise_typed_errors_without_the_key(gateway_stub):
+    client = GatewayClient(gateway_stub, api_key=TEST_KEY)
+    with pytest.raises(Unauthorized) as unauthorized:
+        client.get("deny401")
+    with pytest.raises(Forbidden) as forbidden:
+        client.get("deny403")
+    for exc in (unauthorized.value, forbidden.value):
+        assert TEST_KEY not in str(exc)
+    assert TEST_KEY not in repr(client)

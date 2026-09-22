@@ -23,7 +23,7 @@ service providers in the US.
 |---|---|---|---|
 | `fednow-core` | [`core/`](core/) | ✅ 7 message types | ISO 20022 library: parsing, validation (XSD facets + FedNow Release 1 profile rules, calibrated against the 81 official samples), builders, and the MQ technical envelope (`FedNowIncoming`/`FedNowOutgoing`) |
 | `fednow-sim` | [`simulator/`](simulator/) | ✅ HTTP + MQ modes | Local FedNow simulator: configurable accept/reject/ACWP/timeout scenarios over a synchronous dev endpoint *or* MQ-style queue-pair semantics — a preparation tool for the Fed's Customer Testing Program (CTP) |
-| `fednow-gateway` | [`gateway/`](gateway/) | ✅ full send loop | Send middleware: event-sourced state machine on SQLite, idempotency-keyed REST API, real outbox, background pacs.028 reconciler, and an MQ-style southbound adapter (`FEDNOW_GW_SOUTHBOUND=mq`) |
+| `fednow-gateway` | [`gateway/`](gateway/) | ✅ full send loop | Send middleware: event-sourced state machine on SQLite, idempotency-keyed REST API authenticated with API keys (fail-closed), real outbox, background pacs.028 reconciler, and an MQ-style southbound adapter (`FEDNOW_GW_SOUTHBOUND=mq`) |
 | `fednow-conformance` | [`conformance/`](conformance/) | ✅ 24 vectors | Conformance suite any implementation can run: language-agnostic vector corpus (bare Documents + envelopes), message validator CLI, and a live CTP scenario runner |
 | `fednow-gateway-client` | [`sdk/python/`](sdk/python/) | ✅ v0 (Python) | Zero-dependency Python client for the gateway REST API — idempotent submits, `wait_final` that understands the timeout case, profile violations as exceptions with rule codes; integration-tested against the live stack in CI |
 | `fednow-gateway-client` | [`sdk/java/`](sdk/java/) | ✅ v0 (Java 17) | Same client contract for the JVM (banks' home turf): builder-checked requests, `waitFinal`, typed exceptions; one dependency (Jackson); integration-tested against the live stack in CI |
@@ -70,6 +70,9 @@ MQ technical envelope.
 
 - **No blind resends, ever.** Unresolved submissions are reconciled via pacs.028.
 - **Idempotency keys are mandatory** at the gateway's northbound API.
+- **Fail closed.** The gateway's REST API requires an API key, and the gateway
+  refuses to start without one. There is no unauthenticated mode, not even for
+  the demo: the [Quick Start](QUICKSTART.md) generates a key first.
 - **24x7x365**: zero-downtime deploys, no maintenance windows.
 - **No telemetry, no phone-home.** Zero credentials in this repo.
 - Docs are a product: the *FedNow Integration Handbook* (in `docs/`) will center on the

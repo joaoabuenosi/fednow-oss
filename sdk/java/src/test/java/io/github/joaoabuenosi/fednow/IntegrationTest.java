@@ -13,7 +13,8 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 /**
  * Integration: the SDK against a live fednow-gateway (+ fednow-sim).
  * Enabled only when FEDNOW_GW_URL is set — CI launches the stack in MQ mode
- * with fast reconcile timings; see .github/workflows/ci.yml.
+ * with fast reconcile timings; see .github/workflows/ci.yml. FEDNOW_GW_API_KEY
+ * must hold a key the gateway accepts (one of its FEDNOW_GW_API_KEYS).
  */
 @EnabledIfEnvironmentVariable(named = "FEDNOW_GW_URL", matches = ".+")
 class IntegrationTest {
@@ -22,7 +23,10 @@ class IntegrationTest {
 
     @BeforeEach
     void connect() {
-        client = new GatewayClient(System.getenv("FEDNOW_GW_URL"));
+        String apiKey = System.getenv("FEDNOW_GW_API_KEY");
+        assertTrue(apiKey != null && !apiKey.isBlank(),
+                "set FEDNOW_GW_API_KEY to a key the gateway accepts");
+        client = new GatewayClient(System.getenv("FEDNOW_GW_URL"), apiKey);
         assertTrue(client.healthy(), "no gateway answering");
     }
 
@@ -93,5 +97,17 @@ class IntegrationTest {
                         .creditorAgentRoutingNumber("992000008")
                         .build()));
         assertTrue(exc.codes().contains("fednow.ctgypurp.known"));
+    }
+
+    @Test
+    void gatewayRefusesAnonymousAndWrongKeys() {
+        String url = System.getenv("FEDNOW_GW_URL");
+        for (var other : new GatewayClient[] {
+                new GatewayClient(url),
+                new GatewayClient(url, "test-only-wrong-key-0123456789abcdef0000")}) {
+            assertTrue(other.healthy(), "the probe stays public");
+            assertThrows(GatewayException.Unauthorized.class,
+                    () -> other.get("jvm-it-" + UUID.randomUUID()));
+        }
     }
 }

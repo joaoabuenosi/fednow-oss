@@ -4,9 +4,10 @@ Thin Python client for the [fednow-gateway](../../gateway/) REST API —
 **stdlib only, zero runtime dependencies**.
 
 ```python
+import os
 from fednow_client import GatewayClient, ProfileViolation
 
-gw = GatewayClient("http://localhost:8090")
+gw = GatewayClient("http://localhost:8090", api_key=os.environ["FEDNOW_GW_API_KEY"])
 
 payment = gw.submit(
     "order-2026-0001",                 # idempotency key — mandatory by design
@@ -30,6 +31,12 @@ The client mirrors the gateway's operating rules instead of hiding them:
 - **`wait_final` understands the timeout case.** `TIMEOUT_UNRESOLVED` is not
   final: the gateway's reconciler is resolving it with a pacs.028 status
   request (never a resend), so the client keeps polling through it.
+- **Authenticated.** Pass `api_key=` (one of the gateway's
+  `FEDNOW_GW_API_KEYS`, or a read-only key for monitoring); it is sent as
+  `Authorization: Bearer <key>` on every call except `healthy()`. A missing
+  or unknown key raises `Unauthorized` (401), a read-only key on a write
+  raises `Forbidden` (403). The key is never included in an exception
+  message or in the client's `repr`.
 - **Profile violations are exceptions with rule codes.**
   `ProfileViolation.codes` carries the gateway's stable identifiers
   (`fednow.ctgypurp.known`, `fednow.aba.checksum`, …) — every violation at
@@ -41,8 +48,9 @@ The client mirrors the gateway's operating rules instead of hiding them:
 pip install ./sdk/python              # or: pip install -e ./sdk/python
 pytest sdk/python                     # unit tests (stub server, no gateway)
 
-# integration against the live stack (see QUICKSTART.md at the repo root):
-FEDNOW_GW_URL=http://localhost:8090 pytest sdk/python
+# integration against the live stack (see QUICKSTART.md at the repo root);
+# FEDNOW_GW_API_KEY must be a key the gateway was started with:
+FEDNOW_GW_URL=http://localhost:8090 FEDNOW_GW_API_KEY=... pytest sdk/python
 ```
 
 The integration tests run in CI against a real gateway↔simulator pair in
