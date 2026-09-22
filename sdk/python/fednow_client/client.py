@@ -9,8 +9,9 @@ Design notes, mirroring the gateway's own rules:
 - Amounts are **integer cents**. There is no float anywhere in this module.
 - Every call except ``healthy`` needs an API key: the gateway rejects
   anonymous requests with 401, and a read-only key on a write with 403.
-- ``SETTLED`` and ``REJECTED`` are the only final states.
-  ``TIMEOUT_UNRESOLVED`` is a work item the gateway's reconciler resolves
+- ``SETTLED``, ``REJECTED``, ``HELD`` and ``REFUSED`` are the final states.
+  ``HELD`` / ``REFUSED`` only occur when the gateway runs a pre-send risk
+  check; nothing was sent. ``TIMEOUT_UNRESOLVED`` is a work item the gateway's reconciler resolves
   via pacs.028 — ``wait_final`` keeps waiting through it.
 """
 
@@ -23,8 +24,10 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Optional
 
-#: States that no advice can change anymore.
-FINAL_STATES = frozenset({"SETTLED", "REJECTED"})
+#: States that no advice can change anymore. ``HELD`` and ``REFUSED`` come
+#: from the gateway's optional pre-send risk check: the payment was not sent,
+#: and this gateway version has no route that sends it later.
+FINAL_STATES = frozenset({"SETTLED", "REJECTED", "HELD", "REFUSED"})
 
 
 class GatewayError(Exception):
@@ -195,7 +198,7 @@ class GatewayClient:
         timeout: float = 120.0,
         poll_interval: float = 1.0,
     ) -> Payment:
-        """Poll until the payment reaches ``SETTLED`` or ``REJECTED``.
+        """Poll until the payment reaches a final state (``FINAL_STATES``).
 
         ``TIMEOUT_UNRESOLVED`` is *not* final: the gateway's reconciler is
         resolving it via pacs.028, so this keeps waiting. Raises

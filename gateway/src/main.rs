@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use fednow_gateway::http::{router, AppState, ReconcileConfig};
+use fednow_gateway::risk::gate_from_lookup;
 use fednow_gateway::{AnyPort, ApiKeys, HttpSimPort, MqSimPort, PaymentService, SqliteStore};
 
 #[tokio::main]
@@ -44,11 +45,34 @@ async fn main() {
         other => panic!("FEDNOW_GW_SOUTHBOUND must be 'http' or 'mq', found '{other}'"),
     };
 
+    // Pre-send risk check: off unless FEDNOW_GW_RISK_PROVIDER names one. A
+    // value the gateway does not understand stops it here, like a missing
+    // API key: never run with a check the operator did not intend.
+    let risk = match gate_from_lookup(|name| std::env::var(name).ok(), &sim_url) {
+        Ok(gate) => gate,
+        Err(e) => {
+            eprintln!("fednow-gateway: {e}");
+            std::process::exit(2);
+        }
+    };
+    if risk.is_enabled() {
+        let policy = risk.policy();
+        eprintln!(
+            "risk check: on (provider {}, timeout {} ms, max in flight {}, on unavailable: {})",
+            risk.provider_name().unwrap_or("none"),
+            policy.timeout.as_millis(),
+            policy.max_in_flight,
+            policy.on_unavailable.name()
+        );
+    } else {
+        eprintln!("risk check: off (FEDNOW_GW_RISK_PROVIDER unset or none)");
+    }
+
     let store =
         SqliteStore::open(&db_path).unwrap_or_else(|e| panic!("cannot open {db_path}: {e}"));
     eprintln!("event store: {db_path}");
     let state = Arc::new(AppState {
-        service: PaymentService::new(store, port, sender_rtn),
+        service: PaymentService::new(store, port, sender_rtn).with_risk_gate(risk),
         reconcile,
         api_keys,
     });

@@ -219,3 +219,52 @@ fn advices_map_from_real_pacs002_documents() {
     .unwrap();
     assert_eq!(p.state, PaymentState::Rejected);
 }
+
+fn risk_checked(outcome: fednow_gateway::RiskOutcome) -> PaymentEvent {
+    PaymentEvent::RiskChecked {
+        outcome,
+        reason: None,
+        source: fednow_gateway::RiskSource::Provider,
+        provider: "test".to_string(),
+        elapsed_ms: 3,
+        at_unix: 1_002,
+    }
+}
+
+#[test]
+fn risk_check_sits_between_validation_and_the_outbox() {
+    use fednow_gateway::RiskOutcome;
+
+    // Allow: state holds, submission proceeds.
+    let mut p = Payment::new(created("r1")).unwrap();
+    p.apply(PaymentEvent::Validated { at_unix: 1_001 }).unwrap();
+    p.apply(risk_checked(RiskOutcome::Allow)).unwrap();
+    assert_eq!(p.state, PaymentState::Validated);
+    // Only one check per payment.
+    assert!(p.apply(risk_checked(RiskOutcome::Allow)).is_err());
+    p.apply(PaymentEvent::Submitted { at_unix: 1_003 }).unwrap();
+    assert_eq!(p.state, PaymentState::Submitted);
+
+    // Hold / refuse: nothing can move the payment to the outbox.
+    for (outcome, state) in [
+        (RiskOutcome::Hold, PaymentState::Held),
+        (RiskOutcome::Refuse, PaymentState::Refused),
+    ] {
+        let mut p = Payment::new(created("r2")).unwrap();
+        p.apply(PaymentEvent::Validated { at_unix: 1_001 }).unwrap();
+        p.apply(risk_checked(outcome)).unwrap();
+        assert_eq!(p.state, state);
+        assert!(p.apply(PaymentEvent::Submitted { at_unix: 1_003 }).is_err());
+        assert!(p.apply(risk_checked(RiskOutcome::Allow)).is_err());
+        assert_eq!(
+            reconciliation_action(&p, 10_000, 20, 30),
+            ReconciliationAction::None
+        );
+    }
+
+    // Before validation, or after submission, a check is illegal.
+    let mut p = Payment::new(created("r3")).unwrap();
+    assert!(p.apply(risk_checked(RiskOutcome::Allow)).is_err());
+    to_ack_pending(&mut p);
+    assert!(p.apply(risk_checked(RiskOutcome::Allow)).is_err());
+}

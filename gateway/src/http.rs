@@ -225,6 +225,21 @@ pub struct PaymentView {
     pub queries_sent: u32,
     pub rejection_reason: Option<String>,
     pub events: usize,
+    /// The pre-send risk check, when one ran. Absent (not `null`) otherwise,
+    /// so a gateway without a risk provider answers exactly as before.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub risk: Option<RiskView>,
+}
+
+/// The risk check as the API reports it: the same fields the audit event
+/// records, minus timings.
+#[derive(Debug, Serialize)]
+pub struct RiskView {
+    /// `allow`, `hold` or `refuse`.
+    pub outcome: &'static str,
+    pub reason: Option<String>,
+    /// `provider`, `timeout`, `error` or `budget_exhausted`.
+    pub source: &'static str,
 }
 
 impl PaymentView {
@@ -238,6 +253,11 @@ impl PaymentView {
             queries_sent: p.queries_sent,
             rejection_reason: p.rejection_reason.clone(),
             events: p.events.len(),
+            risk: p.risk_outcome.map(|outcome| RiskView {
+                outcome: outcome.name(),
+                reason: p.risk_reason.clone(),
+                source: p.risk_source.map_or("provider", |s| s.name()),
+            }),
         }
     }
 }

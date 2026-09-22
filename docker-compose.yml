@@ -28,6 +28,10 @@ services:
       # Snappy demo cadence (QUICKSTART.md timings assume this); production
       # deployments tune the sweeper to their own volume.
       FEDNOW_GW_SWEEP_SECS: 2
+      # Pre-send risk check: off unless you export FEDNOW_GW_RISK_PROVIDER=sim
+      # (QUICKSTART.md step 6), which asks the simulator's demo endpoint.
+      # That endpoint is this project's own, not any Federal Reserve API.
+      FEDNOW_GW_RISK_PROVIDER: ${FEDNOW_GW_RISK_PROVIDER:-none}
     ports:
       - "8090:8090"
     depends_on:

@@ -30,6 +30,9 @@ The client mirrors the gateway's operating rules instead of hiding them:
 - **`waitFinal` understands the timeout case.** `TIMEOUT_UNRESOLVED` is not
   final: the gateway's reconciler is resolving it with a pacs.028 status
   request (never a resend), so the client keeps polling through it.
+  `HELD` and `REFUSED`, which only a gateway with its optional
+  [pre-send risk check](../../gateway/README.md#pre-send-risk-check) produces,
+  are final: nothing was sent, so `waitFinal` returns them at once.
 - **Authenticated.** Pass the API key (one of the gateway's
   `FEDNOW_GW_API_KEYS`, or a read-only key for monitoring) to the
   constructor; it is sent as `Authorization: Bearer <key>` on every call

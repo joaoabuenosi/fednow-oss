@@ -2,7 +2,9 @@
 //!
 //! Orchestrates the domain core (events, state machine), fednow-core (message
 //! construction and validation) and the southbound port. Owns no clocks —
-//! `now_unix` and calendar dates come from the caller.
+//! `now_unix` and calendar dates come from the caller. (The optional pre-send
+//! risk check measures its own timeout on a monotonic clock; the elapsed time
+//! it records is stored in the event, so replay stays deterministic.)
 //!
 //! Uses the outbox pattern: the `Submitted` event and the wire message become
 //! durable in one transaction; [`PaymentService::publish_pending`] drains the
@@ -17,6 +19,7 @@ use thiserror::Error;
 
 use crate::payment::{advice_from_pacs002, Payment, PaymentEvent, TransitionError};
 use crate::reconciler::{reconciliation_action, ReconciliationAction};
+use crate::risk::{RiskCheckInput, RiskGate, RiskOutcome};
 use crate::southbound::{FedNowPort, PortError, SubmitOutcome};
 use crate::store::{CreateOutcome, PaymentStore};
 
@@ -62,6 +65,9 @@ pub struct PaymentService<S, P> {
     store: S,
     port: P,
     sender_routing_number: String,
+    /// Pre-send risk check. Disabled unless [`Self::with_risk_gate`] is
+    /// called: no check runs and no event is recorded.
+    risk: RiskGate,
 }
 
 /// The FedNow Service application identifier (`To` of every outbound query).
@@ -73,7 +79,14 @@ impl<S: PaymentStore, P: FedNowPort> PaymentService<S, P> {
             store,
             port,
             sender_routing_number: sender_routing_number.into(),
+            risk: RiskGate::disabled(),
         }
+    }
+
+    /// Put a pre-send risk check on the send path (see [`crate::risk`]).
+    pub fn with_risk_gate(mut self, gate: RiskGate) -> Self {
+        self.risk = gate;
+        self
     }
 
     pub fn load(&self, idempotency_key: &str) -> Option<Payment> {
@@ -134,8 +147,39 @@ impl<S: PaymentStore, P: FedNowPort> PaymentService<S, P> {
         }
 
         let key = &req.idempotency_key;
-        self.store
+        let validated = self
+            .store
             .append(key, PaymentEvent::Validated { at_unix: now_unix })?;
+
+        // Pre-send risk check: after validation (an invalid message costs no
+        // risk budget), before the outbox (nothing leaves unchecked). With no
+        // provider configured this is a no-op and records nothing.
+        if let Some(verdict) = self.risk.check(&RiskCheckInput {
+            idempotency_key: key.clone(),
+            message_identification: validated.message_identification.clone(),
+            end_to_end_identification: req.end_to_end_identification.clone(),
+            amount_cents: req.amount_cents,
+            creditor_agent_routing_number: req.creditor_agent_routing_number.clone(),
+            creditor_account: req.creditor_account.clone(),
+            category_purpose: req.category_purpose.clone(),
+        }) {
+            let checked = self.store.append(
+                key,
+                PaymentEvent::RiskChecked {
+                    outcome: verdict.outcome,
+                    reason: verdict.reason,
+                    source: verdict.source,
+                    provider: verdict.provider.to_string(),
+                    elapsed_ms: verdict.elapsed_ms,
+                    at_unix: now_unix,
+                },
+            )?;
+            if verdict.outcome != RiskOutcome::Allow {
+                // HELD or REFUSED: nothing reaches the outbox.
+                return Ok(checked);
+            }
+        }
+
         // The outbox pattern's atomic step: the Submitted event and the wire
         // message become durable together — either both or neither.
         self.store
