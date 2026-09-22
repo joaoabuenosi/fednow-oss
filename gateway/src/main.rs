@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use chrono::Utc;
+use fednow_gateway::hold::hold_policy_from_lookup;
 use fednow_gateway::http::{router, AppState, ReconcileConfig};
 use fednow_gateway::risk::gate_from_lookup;
 use fednow_gateway::{AnyPort, ApiKeys, HttpSimPort, MqSimPort, PaymentService, SqliteStore};
@@ -55,6 +56,15 @@ async fn main() {
             std::process::exit(2);
         }
     };
+    // How long a held payment stays releasable. Read always, so a bad value
+    // is caught even before a provider is turned on.
+    let hold = match hold_policy_from_lookup(|name| std::env::var(name).ok()) {
+        Ok(policy) => policy,
+        Err(e) => {
+            eprintln!("fednow-gateway: {e}");
+            std::process::exit(2);
+        }
+    };
     if risk.is_enabled() {
         let policy = risk.policy();
         eprintln!(
@@ -64,6 +74,10 @@ async fn main() {
             policy.max_in_flight,
             policy.on_unavailable.name()
         );
+        eprintln!(
+            "held payments: releasable for {} s by an operator key, then cancelled (hold_expired)",
+            hold.max_age_secs
+        );
     } else {
         eprintln!("risk check: off (FEDNOW_GW_RISK_PROVIDER unset or none)");
     }
@@ -72,7 +86,9 @@ async fn main() {
         SqliteStore::open(&db_path).unwrap_or_else(|e| panic!("cannot open {db_path}: {e}"));
     eprintln!("event store: {db_path}");
     let state = Arc::new(AppState {
-        service: PaymentService::new(store, port, sender_rtn).with_risk_gate(risk),
+        service: PaymentService::new(store, port, sender_rtn)
+            .with_risk_gate(risk)
+            .with_hold_policy(hold),
         reconcile,
         api_keys,
     });
@@ -87,6 +103,8 @@ async fn main() {
         sweeper.service.publish_pending(now.timestamp());
         // …drain asynchronously delivered advices (MQ mode; no-op over HTTP)…
         sweeper.service.pump_advices(now.timestamp());
+        // …cancel holds nobody released in time (no-op without a provider)…
+        sweeper.service.expire_holds(now.timestamp());
         // …then run the timeout/query policy over every payment.
         let errors = sweeper.service.reconcile_all(
             &now.format("%Y%m%d").to_string(),

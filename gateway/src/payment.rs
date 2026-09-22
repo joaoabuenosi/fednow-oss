@@ -13,7 +13,8 @@ pub enum PaymentState {
     /// Passed fednow-core validation (profile-clean pacs.008).
     Validated,
     /// The pre-send risk check said hold (or failed under the default
-    /// fail-closed policy). Not sent; awaiting a person. Only reachable when a
+    /// fail-closed policy). Not sent; awaiting a person, who releases it
+    /// (→ `Submitted`) or cancels it (→ `Cancelled`). Only reachable when a
     /// risk provider is configured.
     Held,
     /// The pre-send risk check refused it. Not sent, terminal. Distinct from
@@ -28,6 +29,11 @@ pub enum PaymentState {
     Settled,
     /// The service advised rejection.
     Rejected,
+    /// A held payment that was never sent: an operator cancelled it, or it
+    /// outlived the hold policy's maximum age. Terminal. Distinct from
+    /// `Refused` (the risk check's own verdict at submission) and from
+    /// `Rejected` (the far side's verdict after sending).
+    Cancelled,
     /// No advice within the timeout: unresolved, awaiting reconciliation.
     /// Resolved only by an advice obtained via pacs.028 (or manual ops).
     TimeoutUnresolved,
@@ -45,6 +51,7 @@ impl PaymentState {
             PaymentState::AckPending => "ACK_PENDING",
             PaymentState::Settled => "SETTLED",
             PaymentState::Rejected => "REJECTED",
+            PaymentState::Cancelled => "CANCELLED",
             PaymentState::TimeoutUnresolved => "TIMEOUT_UNRESOLVED",
         }
     }
@@ -117,6 +124,35 @@ pub enum PaymentEvent {
         elapsed_ms: u64,
         at_unix: i64,
     },
+    /// The built pacs.008 of a held payment was parked outside the outbox,
+    /// in the same transaction as the `RiskChecked` hold. Records only the
+    /// message's SHA-256 (lowercase hex), so the audit trail can prove that a
+    /// release sent exactly the message that was checked.
+    HoldParked {
+        message_sha256: String,
+        at_unix: i64,
+    },
+    /// A held payment was released: its parked message moved to the outbox,
+    /// in the same transaction. Takes the payment to `Submitted`, as the
+    /// `Submitted` event does for a payment that was never held.
+    HoldReleased {
+        /// Who released it: `operator:<label>` (see [`crate::auth`]).
+        actor: String,
+        /// A short code (the same rule as risk reasons), never free text.
+        reason: String,
+        /// SHA-256 of the message that went to the outbox. Equal to the
+        /// `HoldParked` digest, or the store refuses the release.
+        message_sha256: String,
+        at_unix: i64,
+    },
+    /// A held payment was cancelled and its parked message discarded.
+    HoldCancelled {
+        /// `operator:<label>`, or `gateway` when the hold expired.
+        actor: String,
+        /// A short code; `hold_expired` when the gateway cancelled it.
+        reason: String,
+        at_unix: i64,
+    },
     /// Written durably to the outbox.
     Submitted {
         at_unix: i64,
@@ -171,7 +207,38 @@ pub struct Payment {
     pub risk_reason: Option<String>,
     /// Who produced the outcome: the provider or the failure policy.
     pub risk_source: Option<RiskSource>,
+    /// When the payment was held, if it was.
+    pub held_at_unix: Option<i64>,
+    /// SHA-256 of the parked message, while one is on record.
+    pub held_message_sha256: Option<String>,
+    /// How a hold ended: released or cancelled, by whom, why, when.
+    pub hold_resolution: Option<HoldResolution>,
     pub events: Vec<PaymentEvent>,
+}
+
+/// What ended a hold.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HoldAction {
+    Released,
+    Cancelled,
+}
+
+impl HoldAction {
+    pub fn name(self) -> &'static str {
+        match self {
+            HoldAction::Released => "released",
+            HoldAction::Cancelled => "cancelled",
+        }
+    }
+}
+
+/// The end of a hold, as the event history records it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HoldResolution {
+    pub action: HoldAction,
+    pub actor: String,
+    pub reason: String,
+    pub at_unix: i64,
 }
 
 impl Payment {
@@ -200,6 +267,9 @@ impl Payment {
                 risk_outcome: None,
                 risk_reason: None,
                 risk_source: None,
+                held_at_unix: None,
+                held_message_sha256: None,
+                hold_resolution: None,
                 events: vec![created],
             }),
             other => Err(TransitionError {
@@ -237,6 +307,7 @@ impl Payment {
                     outcome,
                     reason,
                     source,
+                    at_unix,
                     ..
                 },
             ) if self.risk_outcome.is_none() => {
@@ -245,9 +316,55 @@ impl Payment {
                 self.risk_source = Some(*source);
                 match outcome {
                     RiskOutcome::Allow => S::Validated,
-                    RiskOutcome::Hold => S::Held,
+                    RiskOutcome::Hold => {
+                        self.held_at_unix = Some(*at_unix);
+                        S::Held
+                    }
                     RiskOutcome::Refuse => S::Refused,
                 }
+            }
+            // One parked message per hold.
+            (S::Held, E::HoldParked { message_sha256, .. })
+                if self.held_message_sha256.is_none() =>
+            {
+                self.held_message_sha256 = Some(message_sha256.clone());
+                S::Held
+            }
+            // A release sends the parked message and nothing else: the digest
+            // it records must be the one recorded when the message was parked.
+            (
+                S::Held,
+                E::HoldReleased {
+                    actor,
+                    reason,
+                    message_sha256,
+                    at_unix,
+                },
+            ) if self.held_message_sha256.as_deref() == Some(message_sha256.as_str()) => {
+                self.hold_resolution = Some(HoldResolution {
+                    action: HoldAction::Released,
+                    actor: actor.clone(),
+                    reason: reason.clone(),
+                    at_unix: *at_unix,
+                });
+                S::Submitted
+            }
+            (
+                S::Held,
+                E::HoldCancelled {
+                    actor,
+                    reason,
+                    at_unix,
+                },
+            ) => {
+                self.held_message_sha256 = None;
+                self.hold_resolution = Some(HoldResolution {
+                    action: HoldAction::Cancelled,
+                    actor: actor.clone(),
+                    reason: reason.clone(),
+                    at_unix: *at_unix,
+                });
+                S::Cancelled
             }
             (S::Validated, E::Submitted { .. }) => S::Submitted,
             (S::Submitted, E::Published { at_unix }) => {
@@ -293,6 +410,13 @@ impl Payment {
         self.events.push(event);
         Ok(())
     }
+}
+
+/// SHA-256 of a message, as lowercase hex: the digest `HoldParked` and
+/// `HoldReleased` record.
+pub fn message_sha256(message_xml: &str) -> String {
+    let digest = ring::digest::digest(&ring::digest::SHA256, message_xml.as_bytes());
+    digest.as_ref().iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// Extract the gateway's view of a pacs.002: the advice status and, for

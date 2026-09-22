@@ -1,14 +1,27 @@
 //! Northbound authentication and authorization: static bearer API keys.
 //!
-//! Clients send `Authorization: Bearer <key>`. Keys come in two tiers:
+//! Clients send `Authorization: Bearer <key>`. Keys come in three tiers:
 //!
 //! | Tier | Environment | May call |
 //! |---|---|---|
-//! | full | `FEDNOW_GW_API_KEYS` (required) | every protected route |
+//! | full | `FEDNOW_GW_API_KEYS` (required) | [`Access::Read`] and [`Access::Write`] routes |
 //! | read-only | `FEDNOW_GW_READ_API_KEYS` (optional) | [`Access::Read`] routes only |
+//! | operator | `FEDNOW_GW_OPERATOR_API_KEYS` (optional) | [`Access::Read`] and [`Access::Operate`] routes |
 //!
-//! Both variables are comma-separated lists, so a key can be rotated without
-//! downtime: add the new key, move clients over, drop the old one.
+//! All three variables are comma-separated lists, so a key can be rotated
+//! without downtime: add the new key, move clients over, drop the old one.
+//!
+//! **Separation of duties.** [`Access::Operate`] routes release or cancel a
+//! payment the pre-send risk check held. A full-access key cannot call them:
+//! otherwise the application that submits payments could release its own
+//! holds, and the check would stop nothing. An operator key cannot submit.
+//! With no operator key configured, nobody can release a hold.
+//!
+//! **Attribution.** Each operator key is configured as `label:key`. The label
+//! (a short code, e.g. `ops-alice`) is what the event history records as the
+//! actor, `operator:<label>`: a name the gateway derives from the credential,
+//! which a request cannot choose. Map labels to people in your own directory;
+//! the gateway stores no personal data.
 //!
 //! **Fail closed.** There is no way to build an [`ApiKeys`] with zero
 //! full-access keys, and the router cannot be built without an [`ApiKeys`]
@@ -31,12 +44,14 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use ring::digest::{digest, SHA256};
-use subtle::{Choice, ConstantTimeEq};
+use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
 /// Environment variable holding the full-access keys (required).
 pub const API_KEYS_ENV: &str = "FEDNOW_GW_API_KEYS";
 /// Environment variable holding the read-only keys (optional).
 pub const READ_API_KEYS_ENV: &str = "FEDNOW_GW_READ_API_KEYS";
+/// Environment variable holding the operator keys, as `label:key` (optional).
+pub const OPERATOR_API_KEYS_ENV: &str = "FEDNOW_GW_OPERATOR_API_KEYS";
 /// Shortest key accepted. `openssl rand -hex 32` produces 64 characters.
 pub const MIN_KEY_LEN: usize = 32;
 
@@ -51,6 +66,8 @@ pub enum Access {
     Read,
     /// A full-access key.
     Write,
+    /// An operator key: resolve payments the risk check held.
+    Operate,
 }
 
 /// The tier a presented key belongs to.
@@ -58,6 +75,39 @@ pub enum Access {
 pub enum Role {
     Full,
     ReadOnly,
+    Operator,
+}
+
+impl Role {
+    /// Whether this tier may call a route requiring `access`.
+    pub fn may(self, access: Access) -> bool {
+        match access {
+            Access::Public | Access::Read => true,
+            Access::Write => self == Role::Full,
+            Access::Operate => self == Role::Operator,
+        }
+    }
+}
+
+/// Who is calling, as the middleware established it. Handlers receive it as a
+/// request extension; it never carries the key.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Caller {
+    pub role: Role,
+    /// The operator key's label; `None` for the other tiers.
+    pub label: Option<String>,
+}
+
+impl Caller {
+    /// The actor an audit event records for this caller.
+    pub fn actor(&self) -> String {
+        match (&self.role, &self.label) {
+            (Role::Operator, Some(label)) => format!("operator:{label}"),
+            (Role::Operator, None) => "operator".to_string(),
+            (Role::Full, _) => "full".to_string(),
+            (Role::ReadOnly, _) => "read_only".to_string(),
+        }
+    }
 }
 
 /// Why the key configuration was refused. Never carries a key.
@@ -70,8 +120,14 @@ pub enum AuthConfigError {
     /// Entry `position` (1-based) of `var` has a character outside visible
     /// ASCII (`!`..=`~`), so it cannot travel in a header unambiguously.
     InvalidCharacter { var: &'static str, position: usize },
-    /// The same key is configured as both full-access and read-only.
+    /// The same key is configured in two tiers.
     KeyInBothTiers,
+    /// Entry `position` (1-based) of the operator list is not `label:key`
+    /// with a label that is a short code (`[a-z][a-z0-9_.-]{0,31}`, no run of
+    /// five digits).
+    InvalidOperatorLabel { position: usize },
+    /// Entry `position` (1-based) of the operator list reuses a label.
+    DuplicateOperatorLabel { position: usize },
 }
 
 impl fmt::Display for AuthConfigError {
@@ -94,8 +150,18 @@ impl fmt::Display for AuthConfigError {
             ),
             Self::KeyInBothTiers => write!(
                 f,
-                "a key appears in both {API_KEYS_ENV} and {READ_API_KEYS_ENV}; \
-                 a key must belong to exactly one tier"
+                "a key appears in more than one of {API_KEYS_ENV}, {READ_API_KEYS_ENV} and \
+                 {OPERATOR_API_KEYS_ENV}; a key must belong to exactly one tier"
+            ),
+            Self::InvalidOperatorLabel { position } => write!(
+                f,
+                "{OPERATOR_API_KEYS_ENV}: entry #{position} must be label:key, with a label of \
+                 1-32 characters [a-z0-9_.-] starting with a letter (no run of five digits)"
+            ),
+            Self::DuplicateOperatorLabel { position } => write!(
+                f,
+                "{OPERATOR_API_KEYS_ENV}: entry #{position} reuses a label; each operator key \
+                 needs its own label"
             ),
         }
     }
@@ -114,6 +180,8 @@ pub struct ApiKeys {
 struct Digests {
     full: Vec<KeyDigest>,
     read_only: Vec<KeyDigest>,
+    /// (digest, label)
+    operators: Vec<(KeyDigest, String)>,
 }
 
 impl fmt::Debug for ApiKeys {
@@ -122,17 +190,60 @@ impl fmt::Debug for ApiKeys {
         f.debug_struct("ApiKeys")
             .field("full", &self.inner.full.len())
             .field("read_only", &self.inner.read_only.len())
+            .field("operators", &self.inner.operators.len())
             .finish()
     }
 }
 
 impl ApiKeys {
-    /// Read [`API_KEYS_ENV`] and [`READ_API_KEYS_ENV`].
+    /// Read [`API_KEYS_ENV`], [`READ_API_KEYS_ENV`] and
+    /// [`OPERATOR_API_KEYS_ENV`].
     pub fn from_env() -> Result<Self, AuthConfigError> {
         Self::from_lists(
             std::env::var(API_KEYS_ENV).ok().as_deref(),
             std::env::var(READ_API_KEYS_ENV).ok().as_deref(),
-        )
+        )?
+        .with_operators(std::env::var(OPERATOR_API_KEYS_ENV).ok().as_deref())
+    }
+
+    /// Add operator keys: a comma-separated list of `label:key` entries (the
+    /// label ends at the first `:`). `None` or an empty list adds none.
+    pub fn with_operators(self, operators: Option<&str>) -> Result<Self, AuthConfigError> {
+        let mut parsed: Vec<(KeyDigest, String)> = Vec::new();
+        for (i, entry) in operators
+            .unwrap_or("")
+            .split(',')
+            .map(str::trim)
+            .filter(|e| !e.is_empty())
+            .enumerate()
+        {
+            let position = i + 1;
+            let Some((label, key)) = entry.split_once(':') else {
+                return Err(AuthConfigError::InvalidOperatorLabel { position });
+            };
+            if label.len() > 32 || crate::risk::sanitize_reason(label) != label {
+                return Err(AuthConfigError::InvalidOperatorLabel { position });
+            }
+            if parsed.iter().any(|(_, l)| l == label) {
+                return Err(AuthConfigError::DuplicateOperatorLabel { position });
+            }
+            let digest = parse_key(OPERATOR_API_KEYS_ENV, position, key)?;
+            parsed.push((digest, label.to_string()));
+        }
+        let inner = &self.inner;
+        let in_other_tier = |d: &KeyDigest| inner.full.contains(d) || inner.read_only.contains(d);
+        if parsed.iter().enumerate().any(|(i, (d, _))| {
+            in_other_tier(d) || parsed[..i].iter().any(|(earlier, _)| earlier == d)
+        }) {
+            return Err(AuthConfigError::KeyInBothTiers);
+        }
+        Ok(Self {
+            inner: Arc::new(Digests {
+                full: inner.full.clone(),
+                read_only: inner.read_only.clone(),
+                operators: parsed,
+            }),
+        })
     }
 
     /// Parse two comma-separated lists. Surrounding whitespace and empty
@@ -151,7 +262,11 @@ impl ApiKeys {
             return Err(AuthConfigError::KeyInBothTiers);
         }
         Ok(Self {
-            inner: Arc::new(Digests { full, read_only }),
+            inner: Arc::new(Digests {
+                full,
+                read_only,
+                operators: Vec::new(),
+            }),
         })
     }
 
@@ -160,17 +275,51 @@ impl ApiKeys {
         (self.inner.full.len(), self.inner.read_only.len())
     }
 
+    /// Number of operator keys configured.
+    pub fn operator_count(&self) -> usize {
+        self.inner.operators.len()
+    }
+
     /// The tier `presented` belongs to, or `None` if it matches no key.
     /// Constant-time in the key's content: every digest is compared.
     pub fn role(&self, presented: &[u8]) -> Option<Role> {
+        self.identify(presented).map(|c| c.role)
+    }
+
+    /// Who `presented` identifies, or `None` if it matches no key. Every
+    /// digest of every tier is compared, with no early exit, and the matching
+    /// operator's position is selected in constant time too.
+    pub fn identify(&self, presented: &[u8]) -> Option<Caller> {
         let d = sha256(presented);
         let any = |set: &[KeyDigest]| set.iter().fold(Choice::from(0), |acc, k| acc | k.ct_eq(&d));
         let full = any(&self.inner.full);
         let read_only = any(&self.inner.read_only);
+        let mut operator = Choice::from(0);
+        let mut index = 0u64;
+        for (i, (k, _)) in self.inner.operators.iter().enumerate() {
+            let hit = k.ct_eq(&d);
+            operator |= hit;
+            index.conditional_assign(&(i as u64), hit);
+        }
         if bool::from(full) {
-            Some(Role::Full)
+            Some(Caller {
+                role: Role::Full,
+                label: None,
+            })
         } else if bool::from(read_only) {
-            Some(Role::ReadOnly)
+            Some(Caller {
+                role: Role::ReadOnly,
+                label: None,
+            })
+        } else if bool::from(operator) {
+            let label = usize::try_from(index)
+                .ok()
+                .and_then(|i| self.inner.operators.get(i))
+                .map(|(_, label)| label.clone());
+            Some(Caller {
+                role: Role::Operator,
+                label,
+            })
         } else {
             None
         }
@@ -185,16 +334,19 @@ fn parse_list(var: &'static str, raw: &str) -> Result<Vec<KeyDigest>, AuthConfig
         .filter(|k| !k.is_empty())
         .enumerate()
     {
-        let position = i + 1;
-        if !key.bytes().all(|b| b.is_ascii_graphic()) {
-            return Err(AuthConfigError::InvalidCharacter { var, position });
-        }
-        if key.len() < MIN_KEY_LEN {
-            return Err(AuthConfigError::TooShort { var, position });
-        }
-        out.push(sha256(key.as_bytes()));
+        out.push(parse_key(var, i + 1, key)?);
     }
     Ok(out)
+}
+
+fn parse_key(var: &'static str, position: usize, key: &str) -> Result<KeyDigest, AuthConfigError> {
+    if !key.bytes().all(|b| b.is_ascii_graphic()) {
+        return Err(AuthConfigError::InvalidCharacter { var, position });
+    }
+    if key.len() < MIN_KEY_LEN {
+        return Err(AuthConfigError::TooShort { var, position });
+    }
+    Ok(sha256(key.as_bytes()))
 }
 
 fn sha256(bytes: &[u8]) -> KeyDigest {
@@ -252,10 +404,14 @@ pub(crate) async fn authorize(State(guard): State<Guard>, req: Request, next: Ne
     let Some(token) = bearer_token(req.headers()) else {
         return unauthorized(None);
     };
-    match guard.keys.role(token.as_bytes()) {
+    match guard.keys.identify(token.as_bytes()) {
         None => unauthorized(Some("invalid_token")),
-        Some(Role::ReadOnly) if access == Access::Write => forbidden(),
-        Some(_) => next.run(req).await,
+        Some(caller) if !caller.role.may(access) => forbidden(caller.role, access),
+        Some(caller) => {
+            let mut req = req;
+            req.extensions_mut().insert(caller);
+            next.run(req).await
+        }
     }
 }
 
@@ -296,7 +452,15 @@ fn unauthorized(error: Option<&str>) -> Response {
         .into_response()
 }
 
-fn forbidden() -> Response {
+fn forbidden(role: Role, access: Access) -> Response {
+    let detail = match (role, access) {
+        (_, Access::Operate) => {
+            "this route needs an operator key (FEDNOW_GW_OPERATOR_API_KEYS); \
+             full-access and read-only keys cannot resolve a held payment"
+        }
+        (Role::Operator, _) => "operator keys can read and resolve held payments only",
+        _ => "this API key is read-only",
+    };
     (
         StatusCode::FORBIDDEN,
         [(
@@ -305,7 +469,7 @@ fn forbidden() -> Response {
         )],
         Json(serde_json::json!({
             "error": "forbidden",
-            "detail": "this API key is read-only",
+            "detail": detail,
         })),
     )
         .into_response()
@@ -369,9 +533,87 @@ mod tests {
 
     #[test]
     fn debug_output_carries_counts_only() {
-        let keys = ApiKeys::from_lists(Some(FULL), Some(READ)).unwrap();
+        let keys = ApiKeys::from_lists(Some(FULL), Some(READ))
+            .unwrap()
+            .with_operators(Some(&format!("ops-a:{OPS}")))
+            .unwrap();
         let shown = format!("{keys:?}");
-        assert_eq!(shown, "ApiKeys { full: 1, read_only: 1 }");
+        assert_eq!(shown, "ApiKeys { full: 1, read_only: 1, operators: 1 }");
+    }
+
+    const OPS: &str = "test-ops1-key-0000000000000000000000000000";
+    const OPS2: &str = "test-ops2-key-0000000000000000000000000000";
+
+    #[test]
+    fn operator_keys_carry_their_label_and_only_their_tier() {
+        let keys = ApiKeys::from_lists(Some(FULL), Some(READ))
+            .unwrap()
+            .with_operators(Some(&format!(" ops-a:{OPS} , ops.b:{OPS2},")))
+            .unwrap();
+        assert_eq!(keys.operator_count(), 2);
+        let b = keys.identify(OPS2.as_bytes()).unwrap();
+        assert_eq!(b.role, Role::Operator);
+        assert_eq!(b.actor(), "operator:ops.b");
+        assert_eq!(
+            keys.identify(OPS.as_bytes()).unwrap().actor(),
+            "operator:ops-a"
+        );
+        assert_eq!(keys.identify(FULL.as_bytes()).unwrap().label, None);
+
+        // The access matrix: nobody but an operator resolves a hold, and an
+        // operator cannot submit.
+        for (role, read, write, operate) in [
+            (Role::Full, true, true, false),
+            (Role::ReadOnly, true, false, false),
+            (Role::Operator, true, false, true),
+        ] {
+            assert_eq!(role.may(Access::Read), read, "{role:?}");
+            assert_eq!(role.may(Access::Write), write, "{role:?}");
+            assert_eq!(role.may(Access::Operate), operate, "{role:?}");
+        }
+    }
+
+    #[test]
+    fn operator_entries_are_validated_without_echoing_keys() {
+        let base = || ApiKeys::from_lists(Some(FULL), None).unwrap();
+        for (entry, want) in [
+            (
+                OPS.to_string(),
+                AuthConfigError::InvalidOperatorLabel { position: 1 },
+            ),
+            (
+                format!("Ops:{OPS}"),
+                AuthConfigError::InvalidOperatorLabel { position: 1 },
+            ),
+            (
+                format!("emp1234567:{OPS}"),
+                AuthConfigError::InvalidOperatorLabel { position: 1 },
+            ),
+            (
+                format!(":{OPS}"),
+                AuthConfigError::InvalidOperatorLabel { position: 1 },
+            ),
+            (
+                format!("a:{OPS},a:{OPS2}"),
+                AuthConfigError::DuplicateOperatorLabel { position: 2 },
+            ),
+            (format!("a:{FULL}"), AuthConfigError::KeyInBothTiers),
+            (format!("a:{OPS},b:{OPS}"), AuthConfigError::KeyInBothTiers),
+            (
+                "a:weakkey".to_string(),
+                AuthConfigError::TooShort {
+                    var: OPERATOR_API_KEYS_ENV,
+                    position: 1,
+                },
+            ),
+        ] {
+            let err = base().with_operators(Some(&entry)).unwrap_err();
+            assert_eq!(err, want, "{entry}");
+            let shown = err.to_string();
+            assert!(!shown.contains("test-"), "{shown}");
+            assert!(!shown.contains("weakkey"), "{shown}");
+        }
+        assert_eq!(base().with_operators(None).unwrap().operator_count(), 0);
     }
 
     #[test]

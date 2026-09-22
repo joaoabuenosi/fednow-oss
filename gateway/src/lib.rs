@@ -7,11 +7,15 @@
 //! CREATED → VALIDATED → SUBMITTED → ACK_PENDING → SETTLED
 //!               │                        │        → REJECTED
 //!               │                        └──────→ TIMEOUT_UNRESOLVED
-//!               └─(pre-send risk check)─→ HELD | REFUSED   (never sent)
+//!               └─(pre-send risk check)─→ REFUSED            (never sent)
+//!                                        → HELD ─(release)─→ SUBMITTED → …
+//!                                               └(cancel / expiry)─→ CANCELLED (never sent)
 //! ```
 //!
 //! The pre-send risk check ([`risk`]) is optional and off by default; with it
-//! off, the `HELD`/`REFUSED` branch does not exist.
+//! off, the `HELD`/`REFUSED`/`CANCELLED` branch does not exist. How a hold is
+//! released or cancelled, and why a release sends the parked message rather
+//! than a rebuilt one, is in [`hold`].
 //!
 //! `TIMEOUT_UNRESOLVED` is a work item, not a terminal verdict: the
 //! [`reconciler`] decides when to declare it and when to send a payment status
@@ -25,6 +29,7 @@
 //! publisher arrive in later iterations on top of this core.
 
 pub mod auth;
+pub mod hold;
 pub mod http;
 pub mod payment;
 pub mod reconciler;
@@ -34,8 +39,12 @@ pub mod southbound;
 pub mod sqlite;
 pub mod store;
 
-pub use auth::{Access, ApiKeys, AuthConfigError, Role, RouteSpec};
-pub use payment::{advice_from_pacs002, AdviceStatus, Payment, PaymentEvent, PaymentState};
+pub use auth::{Access, ApiKeys, AuthConfigError, Caller, Role, RouteSpec};
+pub use hold::{HoldConfigError, HoldPolicy};
+pub use payment::{
+    advice_from_pacs002, message_sha256, AdviceStatus, HoldAction, HoldResolution, Payment,
+    PaymentEvent, PaymentState,
+};
 pub use reconciler::{reconciliation_action, ReconciliationAction};
 pub use risk::{
     OnUnavailable, RiskCheckInput, RiskDecision, RiskError, RiskGate, RiskOutcome, RiskPolicy,

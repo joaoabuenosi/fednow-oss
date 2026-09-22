@@ -155,8 +155,8 @@ All notable changes to this project are documented here. The format follows
   event is written, and responses are unchanged. A test pins that.
 
   - New states `HELD` (not sent, awaiting a person) and `REFUSED` (not sent,
-    terminal), reachable only with a provider configured. This version has no
-    route that releases a held payment (follow-up in #95).
+    terminal), reachable only with a provider configured. A held payment is
+    released or cancelled through the routes in the next entry.
   - Failure policy `FEDNOW_GW_RISK_ON_UNAVAILABLE` for a provider timeout,
     error or exhausted budget: `hold` (**default**, fail closed and
     recoverable), `refuse`, or `allow` (fail open, still recorded). The
@@ -189,6 +189,64 @@ All notable changes to this project are documented here. The format follows
   `PaymentService::new` is unchanged, and the check is attached with
   `with_risk_gate`. An event store written with a provider configured can hold
   `RiskChecked` rows, which older binaries cannot replay.
+
+- **Release or cancel a held payment (#95).** `HELD` used to be a dead end:
+  the caller had to resubmit under a new idempotency key. Now an operator
+  resolves it.
+
+  - `POST /payments/{key}/release` sends the payment and
+    `POST /payments/{key}/cancel` ends it `CANCELLED`, never sent. Both take
+    `{"reason": "<code>"}`, a short code under the same rule as risk reasons.
+    Free text is refused with `400`.
+  - **A release sends exactly the message that was checked.** On hold, the
+    built pacs.008 is parked in a new `held_messages` table in the same
+    transaction as the hold, and a new `HoldParked` event records its SHA-256.
+    A release moves those bytes to the outbox in one transaction
+    (`HoldReleased`, same digest) and is refused if they no longer match. The
+    outbox gains a unique index on the idempotency key, so a double or racing
+    release sends once and the rest get `409 not_held`. The idempotency key
+    behaves as before.
+  - **A new, third key tier: operator keys** (`FEDNOW_GW_OPERATOR_API_KEYS`,
+    `label:key` entries, optional). They are the only keys that can release or
+    cancel. Full-access keys get `403` there, so the submitting application
+    cannot release its own holds. Operator keys can read but not submit. With
+    none configured, nobody can release. The label is recorded as the actor,
+    `operator:<label>`.
+  - **Holds expire.** A parked message keeps the dates it was built with, so a
+    hold is releasable for `FEDNOW_GW_HOLD_MAX_AGE_SECS` (default 14400, i.e.
+    4 h) and then the sweeper cancels it with actor `gateway` and reason
+    `hold_expired`. A late release gets `409 hold_expired` and sends nothing.
+    An invalid value stops the gateway at startup.
+  - Audit: `HoldReleased` / `HoldCancelled` record actor, reason and time; no
+    account, name, amount or message body. The REST view gains a `hold` field,
+    present only for a payment that was held.
+  - Without a risk provider nothing changes: no holds exist, the new routes
+    answer `409 not_held`, and responses carry no `hold` field. A test pins
+    that. `docker-compose.yml` passes both new variables through, and
+    QUICKSTART step 6 releases and cancels a hold.
+
+  **Breaking, for consumers of the state set.** `HELD` is no longer terminal.
+  It can move to `SUBMITTED` (and on to `ACK_PENDING`, `SETTLED`, …) or to the
+  new terminal state `CANCELLED`, which is distinct from `REFUSED` (the check's
+  verdict) and `REJECTED` (the far side's). Anything that treated `HELD` as
+  final should keep watching it; anything that enumerates states needs
+  `CANCELLED`. Both SDKs add `CANCELLED` to the states `wait_final` /
+  `waitFinal` return on and keep returning on `HELD`, since it waits for a
+  person. A hold now has 4 events, not 3. The `403` body's `detail` now names
+  the tier the route needs.
+
+  For `fednow-gateway` users: `PaymentState::Cancelled`,
+  `PaymentEvent::{HoldParked, HoldReleased, HoldCancelled}`, `Access::Operate`
+  and `Role::Operator` are new variants. `ServiceError` gained `NotHeld`,
+  `HoldExpired`, `NoParkedMessage` and `InvalidReason`, so exhaustive matches
+  need new arms. `PaymentStore` gained four required methods (`park`,
+  `parked_message`, `release_parked`, `discard_parked`). `Payment` gained
+  `held_at_unix` / `held_message_sha256` / `hold_resolution`. New:
+  `ApiKeys::with_operators`, `ApiKeys::identify`, `Caller`,
+  `PaymentService::{release, cancel, expire_holds, with_hold_policy, store}`
+  and the `hold` module. A hold recorded by a build without parking (between
+  #96 and this change) has no parked message. It can be cancelled but not
+  released (`409 no_parked_message`).
 
 - **Fuzzing for the two parsers that see untrusted input.** `cargo-fuzz`
   targets in [`fuzz/`](fuzz) drive `pacs008::parse` → `validate_pacs008` and

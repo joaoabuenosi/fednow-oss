@@ -31,9 +31,12 @@ The client mirrors the gateway's operating rules instead of hiding them:
 - **`wait_final` understands the timeout case.** `TIMEOUT_UNRESOLVED` is not
   final: the gateway's reconciler is resolving it with a pacs.028 status
   request (never a resend), so the client keeps polling through it.
-  `HELD` and `REFUSED`, which only a gateway with its optional
+  `HELD`, `REFUSED` and `CANCELLED`, which only a gateway with its optional
   [pre-send risk check](../../gateway/README.md#pre-send-risk-check) produces,
-  are final: nothing was sent, so `wait_final` returns them at once.
+  return at once: nothing was sent. `HELD` is not terminal (an operator key
+  can release or cancel it), but it waits for a person, not for an advice;
+  call `wait_final` again after a release. Releasing is an operator action, so the
+  SDKs, which hold a submitting key, deliberately have no `release` call.
 - **Authenticated.** Pass `api_key=` (one of the gateway's
   `FEDNOW_GW_API_KEYS`, or a read-only key for monitoring); it is sent as
   `Authorization: Bearer <key>` on every call except `healthy()`. A missing

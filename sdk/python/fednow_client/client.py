@@ -9,9 +9,11 @@ Design notes, mirroring the gateway's own rules:
 - Amounts are **integer cents**. There is no float anywhere in this module.
 - Every call except ``healthy`` needs an API key: the gateway rejects
   anonymous requests with 401, and a read-only key on a write with 403.
-- ``SETTLED``, ``REJECTED``, ``HELD`` and ``REFUSED`` are the final states.
-  ``HELD`` / ``REFUSED`` only occur when the gateway runs a pre-send risk
-  check; nothing was sent. ``TIMEOUT_UNRESOLVED`` is a work item the gateway's reconciler resolves
+- ``SETTLED``, ``REJECTED``, ``REFUSED`` and ``CANCELLED`` are final;
+  ``wait_final`` also stops at ``HELD``. ``HELD`` / ``REFUSED`` /
+  ``CANCELLED`` only occur when the gateway runs a pre-send risk check;
+  nothing was sent. ``HELD`` waits for an operator, who may release it
+  (it then moves on like any payment) or cancel it (``CANCELLED``). ``TIMEOUT_UNRESOLVED`` is a work item the gateway's reconciler resolves
   via pacs.028 — ``wait_final`` keeps waiting through it.
 """
 
@@ -24,10 +26,12 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Optional
 
-#: States that no advice can change anymore. ``HELD`` and ``REFUSED`` come
-#: from the gateway's optional pre-send risk check: the payment was not sent,
-#: and this gateway version has no route that sends it later.
-FINAL_STATES = frozenset({"SETTLED", "REJECTED", "HELD", "REFUSED"})
+#: States ``wait_final`` stops at. ``HELD``, ``REFUSED`` and ``CANCELLED``
+#: come from the gateway's optional pre-send risk check: the payment was not
+#: sent. ``HELD`` is included although it is not terminal: it waits for a
+#: person (an operator key releases or cancels it), so polling would only run
+#: into the timeout. Call ``wait_final`` again after a release.
+FINAL_STATES = frozenset({"SETTLED", "REJECTED", "HELD", "REFUSED", "CANCELLED"})
 
 
 class GatewayError(Exception):

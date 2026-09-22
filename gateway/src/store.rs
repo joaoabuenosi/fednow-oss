@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use crate::payment::{Payment, PaymentEvent, TransitionError};
+use crate::payment::{message_sha256, Payment, PaymentEvent, PaymentState, TransitionError};
 
 /// Result of an idempotency-keyed create.
 #[derive(Debug)]
@@ -59,6 +59,80 @@ pub trait PaymentStore {
     /// How many outbox entries still await publication (ops visibility:
     /// a growing number means the transport is down or refusing).
     fn unpublished_count(&self) -> usize;
+
+    /// Park a held payment's built message outside the outbox: append
+    /// `events` (the `RiskChecked` hold, then `HoldParked`) AND store
+    /// `message_xml` under the key, in one transaction.
+    ///
+    /// Nothing reads parked messages but [`Self::release_parked`], so a
+    /// parked message cannot reach the wire any other way.
+    fn park(
+        &self,
+        idempotency_key: &str,
+        events: Vec<PaymentEvent>,
+        message_xml: String,
+    ) -> Result<Payment, TransitionError>;
+    /// The parked message of a held payment, if one is on record.
+    fn parked_message(&self, idempotency_key: &str) -> Option<String>;
+    /// Release a held payment, in one transaction: append `event` (a
+    /// `HoldReleased`), take the parked message out of parking and enqueue
+    /// it in the outbox. Refused — and nothing changes — when there is no
+    /// parked message, when its SHA-256 is not the one `event` records, when
+    /// the transition is illegal (not `HELD`, already released), or when the
+    /// payment already has an outbox entry.
+    fn release_parked(
+        &self,
+        idempotency_key: &str,
+        event: PaymentEvent,
+    ) -> Result<Payment, TransitionError>;
+    /// Cancel a held payment, in one transaction: append `event` (a
+    /// `HoldCancelled`) and delete the parked message, if any. A message that
+    /// can never be sent is not kept.
+    fn discard_parked(
+        &self,
+        idempotency_key: &str,
+        event: PaymentEvent,
+    ) -> Result<Payment, TransitionError>;
+}
+
+/// The digest a `HoldReleased` event claims for the message it sends.
+pub(crate) fn released_digest(event: &PaymentEvent) -> Result<&str, TransitionError> {
+    match event {
+        PaymentEvent::HoldReleased { message_sha256, .. } => Ok(message_sha256),
+        other => Err(TransitionError {
+            state: PaymentState::Held,
+            event: format!("{other:?} passed to release_parked"),
+        }),
+    }
+}
+
+/// Refuse to move a parked message whose bytes are not the ones recorded.
+pub(crate) fn check_parked(
+    message_xml: &str,
+    expected_sha256: &str,
+) -> Result<(), TransitionError> {
+    if message_sha256(message_xml) == expected_sha256 {
+        Ok(())
+    } else {
+        Err(TransitionError {
+            state: PaymentState::Held,
+            event: "parked message does not match its recorded digest".to_string(),
+        })
+    }
+}
+
+pub(crate) fn no_parked_message(idempotency_key: &str) -> TransitionError {
+    TransitionError {
+        state: PaymentState::Held,
+        event: format!("no parked message for '{idempotency_key}'"),
+    }
+}
+
+pub(crate) fn already_in_outbox(idempotency_key: &str) -> TransitionError {
+    TransitionError {
+        state: PaymentState::Submitted,
+        event: format!("'{idempotency_key}' already has an outbox entry"),
+    }
 }
 
 /// In-memory store: a mutexed map of event streams plus an outbox queue.
@@ -73,6 +147,22 @@ struct InMemoryInner {
     streams: HashMap<String, Vec<PaymentEvent>>,
     outbox: Vec<(i64, String, String, bool)>, // (id, key, xml, published)
     next_outbox_id: i64,
+    parked: HashMap<String, String>,
+}
+
+impl InMemoryInner {
+    fn enqueue(&mut self, idempotency_key: &str, message_xml: String) {
+        let id = self.next_outbox_id;
+        self.next_outbox_id += 1;
+        self.outbox
+            .push((id, idempotency_key.to_string(), message_xml, false));
+    }
+
+    fn in_outbox(&self, idempotency_key: &str) -> bool {
+        self.outbox
+            .iter()
+            .any(|(_, key, ..)| key == idempotency_key)
+    }
 }
 
 impl InMemoryStore {
@@ -147,13 +237,13 @@ impl PaymentStore for InMemoryStore {
         message_xml: String,
     ) -> Result<Payment, TransitionError> {
         let mut inner = self.inner.lock().unwrap();
+        // One outbox entry per payment, as the SQLite store's unique index.
+        if inner.in_outbox(idempotency_key) {
+            return Err(already_in_outbox(idempotency_key));
+        }
         // Same lock covers both structures: atomic by construction.
         let payment = append_to(&mut inner.streams, idempotency_key, event)?;
-        let id = inner.next_outbox_id;
-        inner.next_outbox_id += 1;
-        inner
-            .outbox
-            .push((id, idempotency_key.to_string(), message_xml, false));
+        inner.enqueue(idempotency_key, message_xml);
         Ok(payment)
     }
 
@@ -184,5 +274,78 @@ impl PaymentStore for InMemoryStore {
             .iter()
             .filter(|(_, _, _, published)| !published)
             .count()
+    }
+
+    fn park(
+        &self,
+        idempotency_key: &str,
+        events: Vec<PaymentEvent>,
+        message_xml: String,
+    ) -> Result<Payment, TransitionError> {
+        let mut inner = self.inner.lock().unwrap();
+        // Validate every transition on a copy before touching the stream, so
+        // a refusal leaves nothing behind (as the SQLite transaction does).
+        let stream =
+            inner
+                .streams
+                .get(idempotency_key)
+                .cloned()
+                .ok_or_else(|| TransitionError {
+                    state: PaymentState::Created,
+                    event: format!("park for unknown key '{idempotency_key}'"),
+                })?;
+        let mut payment = Payment::replay(stream)?;
+        for event in &events {
+            payment.apply(event.clone())?;
+        }
+        if let Some(stream) = inner.streams.get_mut(idempotency_key) {
+            stream.extend(events);
+        }
+        inner
+            .parked
+            .insert(idempotency_key.to_string(), message_xml);
+        Ok(payment)
+    }
+
+    fn parked_message(&self, idempotency_key: &str) -> Option<String> {
+        self.inner
+            .lock()
+            .unwrap()
+            .parked
+            .get(idempotency_key)
+            .cloned()
+    }
+
+    fn release_parked(
+        &self,
+        idempotency_key: &str,
+        event: PaymentEvent,
+    ) -> Result<Payment, TransitionError> {
+        let mut inner = self.inner.lock().unwrap();
+        let expected = released_digest(&event)?;
+        let message_xml = inner
+            .parked
+            .get(idempotency_key)
+            .cloned()
+            .ok_or_else(|| no_parked_message(idempotency_key))?;
+        check_parked(&message_xml, expected)?;
+        if inner.in_outbox(idempotency_key) {
+            return Err(already_in_outbox(idempotency_key));
+        }
+        let payment = append_to(&mut inner.streams, idempotency_key, event)?;
+        inner.parked.remove(idempotency_key);
+        inner.enqueue(idempotency_key, message_xml);
+        Ok(payment)
+    }
+
+    fn discard_parked(
+        &self,
+        idempotency_key: &str,
+        event: PaymentEvent,
+    ) -> Result<Payment, TransitionError> {
+        let mut inner = self.inner.lock().unwrap();
+        let payment = append_to(&mut inner.streams, idempotency_key, event)?;
+        inner.parked.remove(idempotency_key);
+        Ok(payment)
     }
 }

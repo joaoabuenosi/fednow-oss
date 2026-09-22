@@ -6,10 +6,12 @@ import java.util.Set;
 /**
  * The gateway's view of one payment.
  *
- * <p>{@code SETTLED}, {@code REJECTED}, {@code HELD} and {@code REFUSED} are
- * the final states. {@code HELD} and {@code REFUSED} only occur when the
- * gateway runs a pre-send risk check; nothing was sent, and this gateway
- * version has no route that sends it later.
+ * <p>{@code SETTLED}, {@code REJECTED}, {@code REFUSED} and {@code CANCELLED}
+ * are final; {@link GatewayClient#waitFinal} also stops at {@code HELD}.
+ * {@code HELD}, {@code REFUSED} and {@code CANCELLED} only occur when the
+ * gateway runs a pre-send risk check; nothing was sent. {@code HELD} waits for
+ * an operator, who may release it (it then moves on like any payment) or
+ * cancel it ({@code CANCELLED}); call {@code waitFinal} again after a release.
  * {@code TIMEOUT_UNRESOLVED} is a work item the gateway's reconciler resolves
  * via pacs.028 — {@link GatewayClient#waitFinal} keeps waiting through it.
  */
@@ -23,9 +25,12 @@ public record Payment(
         String rejectionReason,
         int events) {
 
-    /** States no advice can change anymore. */
+    /**
+     * States {@link GatewayClient#waitFinal} stops at. {@code HELD} is not
+     * terminal, but it waits for a person, not for an advice.
+     */
     public static final Set<String> FINAL_STATES =
-            Set.of("SETTLED", "REJECTED", "HELD", "REFUSED");
+            Set.of("SETTLED", "REJECTED", "HELD", "REFUSED", "CANCELLED");
 
     public boolean isFinal() {
         return FINAL_STATES.contains(state);

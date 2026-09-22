@@ -38,10 +38,13 @@ The gateway's northbound REST API (`fednow-gateway`) requires
 probe. The gateway **fails closed**: with no key configured it refuses to
 start. It has no setting that turns authentication off. Keys come from the
 environment (`FEDNOW_GW_API_KEYS` for full access, `FEDNOW_GW_READ_API_KEYS`
-for read-only monitoring) and are never stored in this repository. The
-gateway keeps only their SHA-256 digests, compares in constant time, and never
-writes a key to a log line or a response. Missing or unknown keys get `401`,
-and a read-only key on a write gets `403`. The details and the reasoning are in
+for read-only monitoring, `FEDNOW_GW_OPERATOR_API_KEYS` for the operators who
+release or cancel a payment the pre-send risk check held) and are never stored
+in this repository. The gateway keeps only their SHA-256 digests, compares in
+constant time, and never writes a key to a log line or a response. Missing or
+unknown keys get `401`, and a key on a route outside its tier gets `403`. A
+full-access key cannot release a held payment, so the application that
+submits payments cannot release its own holds. The details and the reasoning are in
 the [gateway README](gateway/README.md#authentication).
 
 The gateway does **not** terminate TLS. A bearer key sent over plain HTTP can
