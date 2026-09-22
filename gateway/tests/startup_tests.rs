@@ -67,3 +67,64 @@ fn refuses_a_weak_key_without_printing_it() {
     assert!(!stderr.contains("test-only-too-short"), "{stderr}");
     assert!(!stderr.contains("listening"), "{stderr}");
 }
+
+#[test]
+fn a_normal_start_never_writes_a_key_to_stderr() {
+    use std::io::{BufRead, BufReader};
+
+    const FULL: &str = "test-only-full-access-key-0123456789abcdef";
+    const READ: &str = "test-only-read-only-key-0123456789abcdef";
+    let db = std::env::temp_dir().join(format!("fednow-gw-start-{}.db", std::process::id()));
+    let mut child = Command::new(env!("CARGO_BIN_EXE_fednow-gateway"))
+        .env_clear()
+        .env("FEDNOW_GW_ADDR", "127.0.0.1:0")
+        .env("FEDNOW_GW_DB", &db)
+        .env("FEDNOW_GW_API_KEYS", FULL)
+        .env("FEDNOW_GW_READ_API_KEYS", READ)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn fednow-gateway");
+
+    // Collect stderr until the gateway says it is listening (or 10s pass).
+    let stderr = child.stderr.take().expect("piped stderr");
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+            if tx.send(line).is_err() {
+                break;
+            }
+        }
+    });
+    let mut seen = Vec::new();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline {
+        match rx.recv_timeout(Duration::from_millis(100)) {
+            Ok(line) => {
+                let listening = line.contains("listening");
+                seen.push(line);
+                if listening {
+                    break;
+                }
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
+    child.kill().ok();
+    let stdout = child.wait_with_output().expect("collect stdout").stdout;
+    std::fs::remove_file(&db).ok();
+
+    let stderr = seen.join("\n");
+    assert!(
+        stderr.contains("listening"),
+        "gateway did not start: {stderr}"
+    );
+    let stdout = String::from_utf8_lossy(&stdout);
+    for output in [&stderr[..], &stdout[..]] {
+        assert!(
+            !output.contains("test-only"),
+            "a key reached the output: {output}"
+        );
+    }
+}

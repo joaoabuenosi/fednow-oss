@@ -18,8 +18,10 @@ async fn main() {
             std::process::exit(2);
         }
     };
-    let (full_keys, read_only_keys) = api_keys.counts();
-    eprintln!("api keys: {full_keys} full-access, {read_only_keys} read-only");
+    // A fixed line on purpose: nothing derived from the keys (not even how
+    // many there are) goes to the log, so there is no data flow from the
+    // credential store to stderr for anyone, or any analyser, to audit.
+    eprintln!("api keys: loaded; authentication required on every route but /healthz");
 
     let addr = std::env::var("FEDNOW_GW_ADDR").unwrap_or_else(|_| "0.0.0.0:8090".to_string());
     let sim_url =

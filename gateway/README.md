@@ -39,8 +39,8 @@ Every route except `GET /healthz` requires `Authorization: Bearer <key>`.
   Add the new key, restart, move clients over, then remove the old key.
 - **Storage.** The gateway keeps only SHA-256 digests of the configured keys,
   and compares a presented key against every digest in constant time. At
-  startup it logs how many keys of each tier it loaded, and nothing else about
-  them.
+  startup it logs a fixed line saying authentication is on. Nothing derived
+  from the keys goes to the log, not even how many there are.
 - **Not TLS.** The gateway speaks plain HTTP, so a bearer key crosses the
   network in the clear unless something encrypts it. Outside a laptop, put it
   behind a TLS-terminating proxy or a service mesh; that proxy is also where
