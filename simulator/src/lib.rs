@@ -30,6 +30,14 @@
 //! access-controlled Technical Specifications (issue #14) and will replace
 //! `SIMV` once known.
 //!
+//! ## Demo risk check
+//!
+//! `POST /demo/risk-check` answers the gateway's optional pre-send risk check
+//! (`FEDNOW_GW_RISK_PROVIDER=sim`) so the quickstart can show hold, refuse
+//! and timeout. Its JSON shape is this project's own invention. It is **not**
+//! a model of the Federal Reserve's Network Intelligence API, whose contract
+//! is not public (issue #95). See [`demo_risk_decision`] for the triggers.
+//!
 //! ## The timeout lesson
 //!
 //! A timed-out payment is *unresolved*, not failed: the simulator still decides
@@ -52,7 +60,7 @@ use fednow_core::builder::{Head001Builder, Pacs002Builder};
 use fednow_core::envelope::{self, Direction, EnvelopedDocument};
 use fednow_core::validate::{validate_envelope, validate_pacs008, validate_pacs028};
 use fednow_core::{pacs002, pacs008, pacs028, ValidationIssue};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// What the simulator should do with an accepted message.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -191,11 +199,87 @@ pub fn router(config: SimConfig) -> Router {
         .route("/fednow/messages", post(handle_message))
         .route("/mq/participants/{rtn}/send", post(handle_mq_send))
         .route("/mq/participants/{rtn}/receive", get(handle_mq_receive))
+        .route("/demo/risk-check", post(handle_demo_risk_check))
         .with_state(Arc::new(SimState {
             config,
             advices: Mutex::new(HashMap::new()),
             queues: Mutex::new(HashMap::new()),
         }))
+}
+
+/// Request body of the demo risk endpoint. Only the amount drives the demo;
+/// nothing else about the payment is asked for.
+#[derive(Debug, Deserialize)]
+pub struct DemoRiskRequest {
+    pub amount_cents: u64,
+}
+
+/// Response body of the demo risk endpoint.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DemoRiskResponse {
+    /// `allow`, `hold` or `refuse`.
+    pub decision: &'static str,
+    pub reason: Option<&'static str>,
+}
+
+/// What the demo risk endpoint does for an amount, chosen by its cents like
+/// the settlement triggers (`.11`–`.66`), on a disjoint set of cents.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DemoRisk {
+    Answer(DemoRiskResponse),
+    /// Answer `allow`, but only after this many milliseconds: longer than
+    /// the gateway's default risk timeout, so its failure policy decides.
+    Slow(u64),
+    /// HTTP 503: the provider is down.
+    Unavailable,
+}
+
+/// Demo risk triggers:
+///
+/// | Cents | Behaviour |
+/// |---|---|
+/// | `.77` | `hold`, reason `sim.hold` |
+/// | `.88` | `refuse`, reason `sim.refuse` |
+/// | `.98` | HTTP 503 (provider error) |
+/// | `.99` | `allow` after 5 s (longer than the gateway's default timeout) |
+/// | anything else | `allow` |
+pub fn demo_risk_decision(amount_cents: u64) -> DemoRisk {
+    match amount_cents % 100 {
+        77 => DemoRisk::Answer(DemoRiskResponse {
+            decision: "hold",
+            reason: Some("sim.hold"),
+        }),
+        88 => DemoRisk::Answer(DemoRiskResponse {
+            decision: "refuse",
+            reason: Some("sim.refuse"),
+        }),
+        98 => DemoRisk::Unavailable,
+        99 => DemoRisk::Slow(5_000),
+        _ => DemoRisk::Answer(DemoRiskResponse {
+            decision: "allow",
+            reason: None,
+        }),
+    }
+}
+
+async fn handle_demo_risk_check(axum::Json(req): axum::Json<DemoRiskRequest>) -> Response {
+    match demo_risk_decision(req.amount_cents) {
+        DemoRisk::Answer(resp) => (StatusCode::OK, axum::Json(resp)).into_response(),
+        DemoRisk::Slow(ms) => {
+            tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
+            (
+                StatusCode::OK,
+                axum::Json(DemoRiskResponse {
+                    decision: "allow",
+                    reason: None,
+                }),
+            )
+                .into_response()
+        }
+        DemoRisk::Unavailable => {
+            (StatusCode::SERVICE_UNAVAILABLE, "demo risk provider down").into_response()
+        }
+    }
 }
 
 /// One endpoint, like one MQ channel: the message type is sniffed from the

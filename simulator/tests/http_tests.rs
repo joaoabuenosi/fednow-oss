@@ -383,3 +383,62 @@ async fn healthz_answers() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 }
+
+async fn demo_risk(app: &axum::Router, amount_cents: u64) -> (StatusCode, String) {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::post("/demo/risk-check")
+                .header("content-type", "application/json")
+                .body(Body::from(format!(
+                    r#"{{"amount_cents": {amount_cents}, "creditor_agent_routing_number": "992000008"}}"#
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    (status, String::from_utf8(bytes.to_vec()).unwrap())
+}
+
+#[tokio::test]
+async fn demo_risk_check_answers_by_cents() {
+    let app = router(SimConfig::default());
+    assert_eq!(
+        demo_risk(&app, 125_000).await,
+        (
+            StatusCode::OK,
+            r#"{"decision":"allow","reason":null}"#.to_string()
+        )
+    );
+    assert_eq!(
+        demo_risk(&app, 125_077).await,
+        (
+            StatusCode::OK,
+            r#"{"decision":"hold","reason":"sim.hold"}"#.to_string()
+        )
+    );
+    assert_eq!(
+        demo_risk(&app, 125_088).await,
+        (
+            StatusCode::OK,
+            r#"{"decision":"refuse","reason":"sim.refuse"}"#.to_string()
+        )
+    );
+    assert_eq!(
+        demo_risk(&app, 125_098).await.0,
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    // The settlement triggers are untouched by the demo endpoint.
+    for cents in [11, 22, 33, 44, 55, 66] {
+        assert_eq!(
+            fednow_sim::demo_risk_decision(125_000 + cents),
+            fednow_sim::demo_risk_decision(125_000)
+        );
+    }
+    assert_eq!(
+        fednow_sim::demo_risk_decision(125_099),
+        fednow_sim::DemoRisk::Slow(5_000)
+    );
+}

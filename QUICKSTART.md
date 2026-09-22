@@ -170,6 +170,80 @@ first. The same validator (and the same codes) is available as a library
 [language-agnostic vector corpus](conformance/vectors/) your own
 implementation can run against.
 
+## 6. Optional: a pre-send risk check
+
+The gateway can ask a risk provider about each payment **after** validation
+and **before** anything reaches the outbox. That is the last moment a payment
+can still be stopped, because FedNow settlement is final. The check is off in
+steps 1–5 and stays off unless you turn it on, so the outputs above do not
+change.
+
+For the demo, the provider is the simulator's demo endpoint. Its request and
+response formats are this project's own. It is **not** the Federal Reserve's
+Network Intelligence API. This project has no client for that API: its
+specification is not public ([#95](https://github.com/joaoabuenosi/fednow-oss/issues/95)).
+
+Stop the stack (`Ctrl-C`) and start it again with the check on:
+
+```sh
+export FEDNOW_GW_RISK_PROVIDER=sim
+docker compose up --build
+```
+
+> Raw binaries: add `FEDNOW_GW_RISK_PROVIDER=sim` to the gateway command.
+
+The gateway logs
+`risk check: on (provider sim, timeout 1000 ms, max in flight 32, on unavailable: hold)`.
+Amounts ending in `.77` are held by the demo provider:
+
+```sh
+curl -s -X POST http://localhost:8090/payments \
+  -H "Authorization: Bearer $FEDNOW_GW_API_KEY" \
+  -H "content-type: application/json" \
+  -H "Idempotency-Key: quickstart-5" \
+  -d '{ "reference": "QS0005", "amount_cents": 125077,
+    "debtor_name": "Jane Example",   "debtor_account": "123456789012",
+    "creditor_name": "John Example", "creditor_account": "987654321000",
+    "creditor_agent_routing_number": "992000008", "category_purpose": "CONS" }'
+```
+
+```json
+{"idempotency_key":"quickstart-5","state":"HELD","message_identification":"20260922991000009QS0005","end_to_end_identification":"QS0005","uetr":null,"queries_sent":0,"rejection_reason":null,"events":3,"risk":{"outcome":"hold","reason":"sim.hold","source":"provider"}}
+```
+
+**`HELD`, 3 events:** created, validated, risk-checked. Nothing was sent. The
+same POST with `125088` (and a new key) comes back `REFUSED` with
+`"reason":"sim.refuse"`.
+
+Now the case that decides the policy: the provider does not answer in time.
+`125099` makes the demo provider take 5 seconds, and the gateway waits 1:
+
+```json
+{"idempotency_key":"quickstart-7","state":"HELD", ... ,"events":3,"risk":{"outcome":"hold","reason":"risk_check_timeout","source":"timeout"}}
+```
+
+The provider never decided; the **failure policy** did. The default is
+`hold`: fail closed, but in a state a person can review. That is safer than
+waving the payment through during an outage. It is also less final than
+refusing it. `FEDNOW_GW_RISK_ON_UNAVAILABLE=allow` fails open instead, and
+the audit trail still records that the check did not happen. Any other amount
+is allowed and settles as before, now with
+`"risk":{"outcome":"allow","reason":null,"source":"provider"}` in the view.
+
+`/ops/summary` shows the stopped payments by state
+(`"by_state":{"HELD":2,"REFUSED":1,...}`). This version has no route that
+releases a held payment. Resubmit under a new key after review. The full
+reference (timeouts, the concurrency budget, what the audit event records and
+what it never records) is in the
+[gateway README](gateway/README.md#pre-send-risk-check).
+
+| Amount ends in | Demo risk provider (only with `FEDNOW_GW_RISK_PROVIDER=sim`) |
+|---|---|
+| `.77` | hold → `HELD` |
+| `.88` | refuse → `REFUSED` |
+| `.98` | provider error (HTTP 503) → the failure policy decides (`HELD` by default) |
+| `.99` | answers after 5 s → timeout → the failure policy decides (`HELD` by default) |
+
 ## Amount triggers cheat sheet
 
 | Amount ends in | Scenario |

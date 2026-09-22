@@ -97,6 +97,36 @@ Differences from the HTTP dev mode, all deliberate:
 
 Scenario triggers, config file and the advice ledger are shared between modes.
 
+## Demo risk check
+
+`POST /demo/risk-check` answers the gateway's optional pre-send risk check
+(`FEDNOW_GW_RISK_PROVIDER=sim`, see the
+[gateway README](../gateway/README.md#pre-send-risk-check)), so the quickstart
+can show a hold, a refusal and a provider timeout.
+
+**This endpoint does not simulate the Federal Reserve's Network Intelligence
+API.** That API's contract is not public
+([#95](https://github.com/joaoabuenosi/fednow-oss/issues/95)). The JSON below
+is this project's own, made up for the demo:
+
+```sh
+curl -s -X POST -H "content-type: application/json" \
+  -d '{"amount_cents": 125077}' http://localhost:8080/demo/risk-check
+# {"decision":"hold","reason":"sim.hold"}
+```
+
+| Amount ends in | Answer |
+|---|---|
+| `.77` | `{"decision":"hold","reason":"sim.hold"}` |
+| `.88` | `{"decision":"refuse","reason":"sim.refuse"}` |
+| `.98` | HTTP `503` (provider down) |
+| `.99` | `allow`, but after 5 s (longer than the gateway's default risk timeout) |
+| anything else | `{"decision":"allow","reason":null}` |
+
+Only the amount is read. The cents are disjoint from the settlement triggers
+above, and this endpoint does not change what `/fednow/messages` or MQ mode do
+with any amount.
+
 ## Endpoints
 
 | Method | Path | Purpose |
@@ -104,6 +134,7 @@ Scenario triggers, config file and the advice ledger are shared between modes.
 | POST | `/fednow/messages` | HTTP dev mode: pacs.008 → pacs.002 advice; pacs.028 → stored advice replay |
 | POST | `/mq/participants/{rtn}/send` | MQ mode: fire-and-forget `FedNowIncoming` (pacs.008, pacs.028) |
 | GET | `/mq/participants/{rtn}/receive` | MQ mode: destructive get of the next `FedNowOutgoing` |
+| POST | `/demo/risk-check` | Demo answers for the gateway's optional pre-send risk check (below) |
 | GET | `/healthz` | liveness |
 
 State is in-memory and per-process (v0): restart forgets past payments and

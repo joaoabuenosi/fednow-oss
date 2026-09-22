@@ -7,6 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 
 from fednow_client import (
+    FINAL_STATES,
     Forbidden,
     GatewayClient,
     Payment,
@@ -192,3 +193,12 @@ def test_401_and_403_raise_typed_errors_without_the_key(gateway_stub):
     for exc in (unauthorized.value, forbidden.value):
         assert TEST_KEY not in str(exc)
     assert TEST_KEY not in repr(client)
+
+
+def test_risk_check_states_are_final():
+    # HELD / REFUSED: the gateway's pre-send risk check stopped the payment;
+    # nothing was sent, so wait_final must not poll until its timeout.
+    for state in ("HELD", "REFUSED"):
+        assert state in FINAL_STATES
+        assert Payment._from_json({**PAYMENT, "state": state}).is_final
+    assert not Payment._from_json({**PAYMENT, "state": "TIMEOUT_UNRESOLVED"}).is_final

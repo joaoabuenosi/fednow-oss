@@ -147,6 +147,49 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Pre-send risk check: an extension point in the gateway (#95).** A
+  `RiskProvider` trait (`fednow_gateway::risk`), called after profile
+  validation and before the outbox, answers `allow`, `hold` or `refuse` with a
+  short reason code. It is the last point where a sender can stop a payment.
+  **Off by default.** With `FEDNOW_GW_RISK_PROVIDER` unset, no check runs, no
+  event is written, and responses are unchanged. A test pins that.
+
+  - New states `HELD` (not sent, awaiting a person) and `REFUSED` (not sent,
+    terminal), reachable only with a provider configured. This version has no
+    route that releases a held payment (follow-up in #95).
+  - Failure policy `FEDNOW_GW_RISK_ON_UNAVAILABLE` for a provider timeout,
+    error or exhausted budget: `hold` (**default**, fail closed and
+    recoverable), `refuse`, or `allow` (fail open, still recorded). The
+    reasoning is in the gateway README.
+  - `FEDNOW_GW_RISK_TIMEOUT_MS` (default 1000) is enforced by the gateway, not
+    the provider. `FEDNOW_GW_RISK_MAX_IN_FLIGHT` (default 32) bounds provider
+    calls in flight, including ones the gateway has stopped waiting for. An
+    unknown provider or an invalid value stops the gateway at startup.
+  - Audit: one `RiskChecked` event per check, holding outcome, sanitised reason
+    code, source (`provider` / `timeout` / `error` / `budget_exhausted`),
+    provider name, elapsed ms. No account numbers, names, amounts or provider
+    payloads. The REST view gains a `risk` field, present only when a check
+    ran.
+  - `FEDNOW_GW_RISK_PROVIDER=sim` uses a new **demo** endpoint in `fednow-sim`,
+    `POST /demo/risk-check`. Amounts ending in `.77` hold, `.88` refuse, `.98`
+    fail, and `.99` time out. QUICKSTART step 6 walks through it.
+    `docker-compose.yml` passes `FEDNOW_GW_RISK_PROVIDER` through (default
+    `none`).
+  - Both SDKs count `HELD` and `REFUSED` as final, so `wait_final` /
+    `waitFinal` return instead of polling to their timeout.
+
+  **Not included:** any client for, or compatibility with, the Federal
+  Reserve's Network Intelligence API. Its wire contract is not public. The demo
+  endpoint's JSON is this project's own and does not model it. #95 tracks what
+  is blocked on the specification.
+
+  For `fednow-gateway` users: `PaymentEvent` gained a `RiskChecked` variant and
+  `PaymentState` gained `Held` / `Refused`, so exhaustive matches need new arms.
+  `Payment` gained `risk_outcome` / `risk_reason` / `risk_source`.
+  `PaymentService::new` is unchanged, and the check is attached with
+  `with_risk_gate`. An event store written with a provider configured can hold
+  `RiskChecked` rows, which older binaries cannot replay.
+
 - **Fuzzing for the two parsers that see untrusted input.** `cargo-fuzz`
   targets in [`fuzz/`](fuzz) drive `pacs008::parse` → `validate_pacs008` and
   `pacs002::parse` → `validate_pacs002` (plus both FedNow direction profiles).

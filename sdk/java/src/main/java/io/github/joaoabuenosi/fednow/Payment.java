@@ -6,7 +6,10 @@ import java.util.Set;
 /**
  * The gateway's view of one payment.
  *
- * <p>{@code SETTLED} and {@code REJECTED} are the only final states.
+ * <p>{@code SETTLED}, {@code REJECTED}, {@code HELD} and {@code REFUSED} are
+ * the final states. {@code HELD} and {@code REFUSED} only occur when the
+ * gateway runs a pre-send risk check; nothing was sent, and this gateway
+ * version has no route that sends it later.
  * {@code TIMEOUT_UNRESOLVED} is a work item the gateway's reconciler resolves
  * via pacs.028 — {@link GatewayClient#waitFinal} keeps waiting through it.
  */
@@ -21,7 +24,8 @@ public record Payment(
         int events) {
 
     /** States no advice can change anymore. */
-    public static final Set<String> FINAL_STATES = Set.of("SETTLED", "REJECTED");
+    public static final Set<String> FINAL_STATES =
+            Set.of("SETTLED", "REJECTED", "HELD", "REFUSED");
 
     public boolean isFinal() {
         return FINAL_STATES.contains(state);

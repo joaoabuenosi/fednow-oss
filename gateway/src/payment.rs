@@ -3,6 +3,8 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::risk::{RiskOutcome, RiskSource};
+
 /// The lifecycle states of an outbound FedNow payment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PaymentState {
@@ -10,6 +12,13 @@ pub enum PaymentState {
     Created,
     /// Passed fednow-core validation (profile-clean pacs.008).
     Validated,
+    /// The pre-send risk check said hold (or failed under the default
+    /// fail-closed policy). Not sent; awaiting a person. Only reachable when a
+    /// risk provider is configured.
+    Held,
+    /// The pre-send risk check refused it. Not sent, terminal. Distinct from
+    /// `Rejected`, which is a verdict from the far side after sending.
+    Refused,
     /// Written to the outbox; not yet confirmed on the wire.
     Submitted,
     /// On the wire; awaiting the service advice.
@@ -30,6 +39,8 @@ impl PaymentState {
         match self {
             PaymentState::Created => "CREATED",
             PaymentState::Validated => "VALIDATED",
+            PaymentState::Held => "HELD",
+            PaymentState::Refused => "REFUSED",
             PaymentState::Submitted => "SUBMITTED",
             PaymentState::AckPending => "ACK_PENDING",
             PaymentState::Settled => "SETTLED",
@@ -95,6 +106,17 @@ pub enum PaymentEvent {
     Validated {
         at_unix: i64,
     },
+    /// The pre-send risk check ran (see [`crate::risk`]). Recorded only when
+    /// a provider is configured. Carries no payment data: an outcome, a
+    /// sanitised reason code, who decided, and how long it took.
+    RiskChecked {
+        outcome: RiskOutcome,
+        reason: Option<String>,
+        source: RiskSource,
+        provider: String,
+        elapsed_ms: u64,
+        at_unix: i64,
+    },
     /// Written durably to the outbox.
     Submitted {
         at_unix: i64,
@@ -143,6 +165,12 @@ pub struct Payment {
     pub last_advice: Option<AdviceStatus>,
     /// Reason carried by a rejection, if any.
     pub rejection_reason: Option<String>,
+    /// The pre-send risk check's outcome, when one ran.
+    pub risk_outcome: Option<RiskOutcome>,
+    /// Its sanitised reason code (hold / refuse).
+    pub risk_reason: Option<String>,
+    /// Who produced the outcome: the provider or the failure policy.
+    pub risk_source: Option<RiskSource>,
     pub events: Vec<PaymentEvent>,
 }
 
@@ -169,6 +197,9 @@ impl Payment {
                 queries_sent: 0,
                 last_advice: None,
                 rejection_reason: None,
+                risk_outcome: None,
+                risk_reason: None,
+                risk_source: None,
                 events: vec![created],
             }),
             other => Err(TransitionError {
@@ -199,6 +230,25 @@ impl Payment {
 
         let next = match (&self.state, &event) {
             (S::Created, E::Validated { .. }) => S::Validated,
+            // One check per payment, between validation and the outbox.
+            (
+                S::Validated,
+                E::RiskChecked {
+                    outcome,
+                    reason,
+                    source,
+                    ..
+                },
+            ) if self.risk_outcome.is_none() => {
+                self.risk_outcome = Some(*outcome);
+                self.risk_reason = reason.clone();
+                self.risk_source = Some(*source);
+                match outcome {
+                    RiskOutcome::Allow => S::Validated,
+                    RiskOutcome::Hold => S::Held,
+                    RiskOutcome::Refuse => S::Refused,
+                }
+            }
             (S::Validated, E::Submitted { .. }) => S::Submitted,
             (S::Submitted, E::Published { at_unix }) => {
                 self.published_at_unix = Some(*at_unix);

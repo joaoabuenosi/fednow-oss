@@ -145,7 +145,7 @@ public final class GatewayClient {
     }
 
     /**
-     * Poll until the payment reaches {@code SETTLED} or {@code REJECTED}.
+     * Poll until the payment reaches a final state ({@link Payment#FINAL_STATES}).
      *
      * <p>{@code TIMEOUT_UNRESOLVED} is <em>not</em> final: the gateway's
      * reconciler is resolving it via pacs.028, so this keeps waiting.

@@ -154,3 +154,40 @@ fn full_loop_runs_on_sqlite_against_the_simulator() {
     let payment = svc.submit(&request("sqlite-e2e"), 1_000).unwrap();
     assert_eq!(payment.state, PaymentState::Settled);
 }
+
+#[test]
+fn risk_checked_event_survives_reopen() {
+    use fednow_gateway::{RiskOutcome, RiskSource};
+
+    let dir = std::env::temp_dir().join(format!("fednow-gw-risk-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("risk.db");
+    let path = path.to_str().unwrap();
+    {
+        let store = SqliteStore::open(path).unwrap();
+        store.create(created("risk-k")).unwrap();
+        store
+            .append("risk-k", PaymentEvent::Validated { at_unix: 1_001 })
+            .unwrap();
+        store
+            .append(
+                "risk-k",
+                PaymentEvent::RiskChecked {
+                    outcome: RiskOutcome::Hold,
+                    reason: Some("risk_check_timeout".to_string()),
+                    source: RiskSource::Timeout,
+                    provider: "sim".to_string(),
+                    elapsed_ms: 1_000,
+                    at_unix: 1_002,
+                },
+            )
+            .unwrap();
+    }
+    let reopened = SqliteStore::open(path).unwrap();
+    let p = reopened.load("risk-k").unwrap();
+    assert_eq!(p.state, PaymentState::Held);
+    assert_eq!(p.risk_outcome, Some(RiskOutcome::Hold));
+    assert_eq!(p.risk_source, Some(RiskSource::Timeout));
+    assert_eq!(p.risk_reason.as_deref(), Some("risk_check_timeout"));
+    std::fs::remove_dir_all(&dir).unwrap();
+}

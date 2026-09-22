@@ -128,6 +128,17 @@ class GatewayClientTest {
     }
 
     @Test
+    void riskCheckStatesAreFinal() {
+        // HELD / REFUSED: the gateway's pre-send risk check stopped the
+        // payment; nothing was sent, so waitFinal must not poll to timeout.
+        for (String state : List.of("HELD", "REFUSED")) {
+            Payment p = new Payment("k1", state, "m", "e", null, 0, null, 3);
+            assertTrue(p.isFinal(), state);
+        }
+        assertFalse(new Payment("k1", "TIMEOUT_UNRESOLVED", "m", "e", null, 0, null, 6).isFinal());
+    }
+
+    @Test
     void waitFinalPollsThroughPending() {
         Payment p = client.waitFinal("k1", Duration.ofSeconds(10), Duration.ofMillis(10));
         assertEquals("SETTLED", p.state());
