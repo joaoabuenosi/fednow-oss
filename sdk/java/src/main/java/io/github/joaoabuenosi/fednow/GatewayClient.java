@@ -16,7 +16,7 @@ import java.util.List;
  * Client for one fednow-gateway instance.
  *
  * <pre>{@code
- * var gw = new GatewayClient("http://localhost:8090");
+ * var gw = new GatewayClient("http://localhost:8090", System.getenv("FEDNOW_GW_API_KEY"));
  * var payment = gw.submit("order-2026-0001", SubmitPaymentRequest.builder()
  *         .reference("ORDER0001")
  *         .amountCents(125_000)
@@ -33,6 +33,11 @@ import java.util.List;
  * resubmitting a key is always safe — nothing touches the wire twice), and
  * {@link #waitFinal} knows that {@code TIMEOUT_UNRESOLVED} is not final —
  * the gateway's reconciler is resolving it via pacs.028, never a resend.
+ *
+ * <p>Every call except {@link #healthy} needs an API key, sent as
+ * {@code Authorization: Bearer <key>}: without a valid one the gateway answers
+ * 401 ({@link GatewayException.Unauthorized}), and a read-only key on a write
+ * gets 403 ({@link GatewayException.Forbidden}).
  */
 public final class GatewayClient {
 
@@ -41,12 +46,30 @@ public final class GatewayClient {
     private final String baseUrl;
     private final HttpClient http;
     private final Duration requestTimeout;
+    /** Never logged and never part of an exception message. May be null. */
+    private final String apiKey;
 
+    /** A client that sends no API key — only {@link #healthy} will work. */
     public GatewayClient(String baseUrl) {
-        this(baseUrl, Duration.ofSeconds(10));
+        this(baseUrl, Duration.ofSeconds(10), null);
     }
 
+    /** A client that sends no API key — only {@link #healthy} will work. */
     public GatewayClient(String baseUrl, Duration requestTimeout) {
+        this(baseUrl, requestTimeout, null);
+    }
+
+    /** A client authenticating with {@code apiKey} (10s request timeout). */
+    public GatewayClient(String baseUrl, String apiKey) {
+        this(baseUrl, Duration.ofSeconds(10), apiKey);
+    }
+
+    /**
+     * @param apiKey one of the gateway's {@code FEDNOW_GW_API_KEYS} (or a
+     *     read-only key for read-only use); {@code null} sends none
+     */
+    public GatewayClient(String baseUrl, Duration requestTimeout, String apiKey) {
+        this.apiKey = apiKey;
         this.baseUrl = baseUrl.endsWith("/")
                 ? baseUrl.substring(0, baseUrl.length() - 1)
                 : baseUrl;
@@ -104,7 +127,9 @@ public final class GatewayClient {
 
     public boolean healthy() {
         try {
-            HttpRequest req = newRequest("/healthz").GET().build();
+            // The liveness probe is public: no credential sent.
+            HttpRequest req = HttpRequest.newBuilder(URI.create(baseUrl + "/healthz"))
+                    .timeout(requestTimeout).GET().build();
             return http.send(req, HttpResponse.BodyHandlers.ofString()).statusCode() == 200;
         } catch (IOException e) {
             return false;
@@ -152,7 +177,12 @@ public final class GatewayClient {
     // -- Plumbing ----------------------------------------------------------
 
     private HttpRequest.Builder newRequest(String path) {
-        return HttpRequest.newBuilder(URI.create(baseUrl + path)).timeout(requestTimeout);
+        HttpRequest.Builder builder =
+                HttpRequest.newBuilder(URI.create(baseUrl + path)).timeout(requestTimeout);
+        if (apiKey != null) {
+            builder.header("Authorization", "Bearer " + apiKey);
+        }
+        return builder;
     }
 
     private JsonNode send(HttpRequest request) {
@@ -167,6 +197,12 @@ public final class GatewayClient {
         }
         int status = response.statusCode();
         String body = response.body();
+        if (status == 401) {
+            throw new GatewayException.Unauthorized(body);
+        }
+        if (status == 403) {
+            throw new GatewayException.Forbidden(body);
+        }
         if (status == 404) {
             throw new GatewayException.UnknownPayment(
                     body.isBlank() ? "unknown payment" : body);

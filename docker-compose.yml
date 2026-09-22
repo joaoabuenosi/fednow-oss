@@ -1,4 +1,5 @@
-# The whole loop in one command:
+# The whole loop in one command (after exporting an API key):
+#   export FEDNOW_GW_API_KEY="$(openssl rand -hex 32)"
 #   docker compose up --build
 # then POST a payment to the gateway (see README "Try the whole loop").
 services:
@@ -14,6 +15,11 @@ services:
       context: .
       dockerfile: gateway/Dockerfile
     environment:
+      # The gateway refuses to start without an API key. Taken from your
+      # shell, never written here: `export FEDNOW_GW_API_KEY=$(openssl rand
+      # -hex 32)` first (QUICKSTART.md step 1). Compose stops with this
+      # message if it is unset.
+      FEDNOW_GW_API_KEYS: ${FEDNOW_GW_API_KEY:?export FEDNOW_GW_API_KEY first - see QUICKSTART.md step 1}
       FEDNOW_GW_SIM_URL: http://fednow-sim:8080
       # "mq" = production semantics: fire-and-forget sends + advice queue,
       # messages wrapped in the FedNow technical envelope with a BAH.

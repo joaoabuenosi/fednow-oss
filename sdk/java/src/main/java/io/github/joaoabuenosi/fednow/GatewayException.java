@@ -31,6 +31,23 @@ public class GatewayException extends RuntimeException {
         }
     }
 
+    /** Missing or unknown API key (HTTP 401). */
+    public static final class Unauthorized extends GatewayException {
+        public Unauthorized(String detail) {
+            super("HTTP 401: " + detail);
+        }
+    }
+
+    /**
+     * The API key is valid but may not do this — a read-only key on a write
+     * (HTTP 403).
+     */
+    public static final class Forbidden extends GatewayException {
+        public Forbidden(String detail) {
+            super("HTTP 403: " + detail);
+        }
+    }
+
     /** No payment exists under this idempotency key (HTTP 404). */
     public static final class UnknownPayment extends GatewayException {
         public UnknownPayment(String detail) {

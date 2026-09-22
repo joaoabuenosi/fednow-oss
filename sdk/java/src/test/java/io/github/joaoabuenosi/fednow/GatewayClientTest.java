@@ -33,12 +33,20 @@ class GatewayClientTest {
     private GatewayClient client;
     private final AtomicInteger gets = new AtomicInteger();
     private volatile String lastIdempotencyKey;
+    private volatile String lastAuthorization;
+    private volatile boolean healthzSawAuthorization;
+
+    /** A made-up key for the stub; it authorizes nothing anywhere. */
+    private static final String TEST_KEY = "test-only-api-key-0123456789abcdef0123456789";
 
     @BeforeEach
     void start() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/payments", this::handle);
-        server.createContext("/healthz", ex -> respond(ex, 200, "ok"));
+        server.createContext("/healthz", ex -> {
+            healthzSawAuthorization = ex.getRequestHeaders().containsKey("Authorization");
+            respond(ex, 200, "ok");
+        });
         server.start();
         client = new GatewayClient(
                 "http://127.0.0.1:" + server.getAddress().getPort(), Duration.ofSeconds(5));
@@ -52,7 +60,12 @@ class GatewayClientTest {
     private void handle(HttpExchange ex) throws IOException {
         String path = ex.getRequestURI().getPath();
         String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-        if ("POST".equals(ex.getRequestMethod()) && path.equals("/payments")) {
+        lastAuthorization = ex.getRequestHeaders().getFirst("Authorization");
+        if (path.equals("/payments/deny401")) {
+            respond(ex, 401, "{\"error\":\"unauthorized\"}");
+        } else if (path.equals("/payments/deny403")) {
+            respond(ex, 403, "{\"error\":\"forbidden\"}");
+        } else if ("POST".equals(ex.getRequestMethod()) && path.equals("/payments")) {
             lastIdempotencyKey = ex.getRequestHeaders().getFirst("Idempotency-Key");
             if (lastIdempotencyKey == null) {
                 respond(ex, 400, "the Idempotency-Key header is mandatory");
@@ -151,5 +164,36 @@ class GatewayClientTest {
     void healthyProbes() {
         assertTrue(client.healthy());
         assertFalse(new GatewayClient("http://127.0.0.1:1").healthy());
+    }
+
+    @Test
+    void apiKeyTravelsAsBearerHeaderButNotToTheProbe() {
+        var authed = new GatewayClient(
+                "http://127.0.0.1:" + server.getAddress().getPort(),
+                Duration.ofSeconds(5), TEST_KEY);
+        authed.submit("k1", validRequest().build());
+        assertEquals("Bearer " + TEST_KEY, lastAuthorization);
+        assertTrue(authed.healthy());
+        assertFalse(healthzSawAuthorization);
+    }
+
+    @Test
+    void noApiKeySendsNoAuthorizationHeader() {
+        client.submit("k1", validRequest().build());
+        assertEquals(null, lastAuthorization);
+    }
+
+    @Test
+    void unauthorizedAndForbiddenAreTypedAndDoNotCarryTheKey() {
+        var authed = new GatewayClient(
+                "http://127.0.0.1:" + server.getAddress().getPort(),
+                Duration.ofSeconds(5), TEST_KEY);
+        var unauthorized = assertThrows(GatewayException.Unauthorized.class,
+                () -> authed.get("deny401"));
+        var forbidden = assertThrows(GatewayException.Forbidden.class,
+                () -> authed.get("deny403"));
+        assertFalse(unauthorized.getMessage().contains(TEST_KEY));
+        assertFalse(forbidden.getMessage().contains(TEST_KEY));
+        assertFalse(authed.toString().contains(TEST_KEY));
     }
 }

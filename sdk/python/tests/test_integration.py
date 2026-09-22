@@ -1,11 +1,13 @@
 """Integration: the SDK against a live fednow-gateway (+ fednow-sim).
 
-Skipped unless FEDNOW_GW_URL is set. CI launches the stack with
+Skipped unless FEDNOW_GW_URL is set; FEDNOW_GW_API_KEY must hold a key the
+gateway accepts (one of its FEDNOW_GW_API_KEYS). CI launches the stack with
 FEDNOW_GW_SWEEP_SECS=1 / FEDNOW_GW_TIMEOUT_SECS=3 / FEDNOW_GW_BACKOFF_SECS=2
 so the timeout arc completes in seconds; locally:
 
+    export FEDNOW_GW_API_KEY="$(openssl rand -hex 32)"
     cargo run -p fednow-sim &
-    FEDNOW_GW_SOUTHBOUND=mq FEDNOW_GW_SWEEP_SECS=1 \
+    FEDNOW_GW_API_KEYS="$FEDNOW_GW_API_KEY" FEDNOW_GW_SOUTHBOUND=mq FEDNOW_GW_SWEEP_SECS=1 \
       FEDNOW_GW_TIMEOUT_SECS=3 FEDNOW_GW_BACKOFF_SECS=2 \
       cargo run -p fednow-gateway &
     FEDNOW_GW_URL=http://localhost:8090 pytest sdk/python
@@ -16,9 +18,10 @@ import uuid
 
 import pytest
 
-from fednow_client import GatewayClient, ProfileViolation
+from fednow_client import GatewayClient, ProfileViolation, Unauthorized
 
 GW_URL = os.environ.get("FEDNOW_GW_URL")
+GW_API_KEY = os.environ.get("FEDNOW_GW_API_KEY")
 
 pytestmark = pytest.mark.skipif(
     not GW_URL, reason="set FEDNOW_GW_URL to run against a live gateway"
@@ -27,9 +30,20 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture()
 def client():
-    c = GatewayClient(GW_URL)
+    assert GW_API_KEY, "set FEDNOW_GW_API_KEY to a key the gateway accepts"
+    c = GatewayClient(GW_URL, api_key=GW_API_KEY)
     assert c.healthy(), f"no gateway answering at {GW_URL}"
     return c
+
+
+def test_gateway_refuses_anonymous_and_wrong_keys(client):
+    for anonymous in (
+        GatewayClient(GW_URL),
+        GatewayClient(GW_URL, api_key="test-only-wrong-key-0123456789abcdef0000"),
+    ):
+        assert anonymous.healthy()  # the probe stays public
+        with pytest.raises(Unauthorized):
+            submit(anonymous, f"sdk-it-{uuid.uuid4()}", 125_000)
 
 
 def submit(client, key, amount_cents):

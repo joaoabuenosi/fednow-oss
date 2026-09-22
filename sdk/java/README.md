@@ -6,7 +6,7 @@ runtime dependency (Jackson); HTTP via the JDK's `java.net.http`.
 ```java
 import io.github.joaoabuenosi.fednow.*;
 
-var gw = new GatewayClient("http://localhost:8090");
+var gw = new GatewayClient("http://localhost:8090", System.getenv("FEDNOW_GW_API_KEY"));
 
 var payment = gw.submit("order-2026-0001",          // idempotency key — mandatory
     SubmitPaymentRequest.builder()
@@ -30,6 +30,13 @@ The client mirrors the gateway's operating rules instead of hiding them:
 - **`waitFinal` understands the timeout case.** `TIMEOUT_UNRESOLVED` is not
   final: the gateway's reconciler is resolving it with a pacs.028 status
   request (never a resend), so the client keeps polling through it.
+- **Authenticated.** Pass the API key (one of the gateway's
+  `FEDNOW_GW_API_KEYS`, or a read-only key for monitoring) to the
+  constructor; it is sent as `Authorization: Bearer <key>` on every call
+  except `healthy()`. A missing or unknown key throws
+  `GatewayException.Unauthorized` (401), a read-only key on a write throws
+  `GatewayException.Forbidden` (403). The key is never included in an
+  exception message.
 - **Profile violations are exceptions with rule codes.**
   `GatewayException.ProfileViolation.codes()` carries the gateway's stable
   identifiers (`fednow.ctgypurp.known`, `fednow.aba.checksum`, …) — every
@@ -40,8 +47,9 @@ The client mirrors the gateway's operating rules instead of hiding them:
 ```sh
 mvn -f sdk/java/pom.xml test          # unit tests (JDK stub server, no gateway)
 
-# integration against the live stack (see QUICKSTART.md at the repo root):
-FEDNOW_GW_URL=http://localhost:8090 mvn -f sdk/java/pom.xml test
+# integration against the live stack (see QUICKSTART.md at the repo root);
+# FEDNOW_GW_API_KEY must be a key the gateway was started with:
+FEDNOW_GW_URL=http://localhost:8090 FEDNOW_GW_API_KEY=... mvn -f sdk/java/pom.xml test
 ```
 
 The integration tests run in CI against a real gateway↔simulator pair in

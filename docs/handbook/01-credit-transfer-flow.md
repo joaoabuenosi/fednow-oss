@@ -128,20 +128,23 @@ The whole flow, locally, in three terminals:
 
 ```sh
 # 1. The simulator (HTTP dev mode and MQ mode on the same port)
+export FEDNOW_GW_API_KEY="$(openssl rand -hex 32)"   # the gateway refuses to start without one
 docker compose up --build          # sim on :8080, gateway on :8090 (MQ mode)
 
-# 2. Submit a payment through the gateway's idempotent REST API
+# 2. Submit a payment through the gateway's idempotent, authenticated REST API
+#    (same shell, or re-export the same key)
 curl -s -X POST http://localhost:8090/payments \
+  -H "Authorization: Bearer $FEDNOW_GW_API_KEY" \
   -H "content-type: application/json" \
   -H "Idempotency-Key: demo-0001" \
-  -d '{ "sender_reference": "DEMO0001", "amount_cents": 125000,
+  -d '{ "reference": "DEMO0001", "amount_cents": 125000,
         "creditor_agent_routing_number": "992000008",
         "debtor_name": "Jane", "debtor_account": "123456789012",
         "creditor_name": "John", "creditor_account": "987654321000",
         "category_purpose": "CONS" }'
 
 # 3. Watch it settle (the advice arrives via the MQ receive queue)
-curl -s http://localhost:8090/payments/demo-0001
+curl -s -H "Authorization: Bearer $FEDNOW_GW_API_KEY" http://localhost:8090/payments/demo-0001
 ```
 
 Amount triggers steer the scenario (`.11` reject, `.33` timeout, `.66`

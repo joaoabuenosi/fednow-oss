@@ -3,9 +3,10 @@
 use std::sync::Arc;
 
 use axum::body::Body;
+use axum::http::{header, Method};
 use axum::http::{Request, StatusCode};
-use fednow_gateway::http::{router, AppState, ReconcileConfig};
-use fednow_gateway::{HttpSimPort, InMemoryStore, PaymentService};
+use fednow_gateway::http::{route_table, router, AppState, ReconcileConfig};
+use fednow_gateway::{Access, ApiKeys, HttpSimPort, InMemoryStore, PaymentService};
 use http_body_util::BodyExt;
 use tower::ServiceExt;
 
@@ -24,14 +25,27 @@ fn start_sim() -> String {
     format!("http://{}", rx.recv().unwrap())
 }
 
-fn app(sim_url: &str, timeout_secs: i64) -> axum::Router {
-    router(Arc::new(AppState {
+/// Test-only keys, generated for this file; they authorize nothing anywhere.
+const FULL_KEY: &str = "test-only-full-access-key-0123456789abcdef";
+const READ_KEY: &str = "test-only-read-only-key-0123456789abcdef";
+
+fn state(sim_url: &str, timeout_secs: i64) -> Arc<AppState<InMemoryStore, HttpSimPort>> {
+    Arc::new(AppState {
         service: PaymentService::new(InMemoryStore::new(), HttpSimPort::new(sim_url), "991000009"),
         reconcile: ReconcileConfig {
             timeout_secs,
             backoff_secs: 0,
         },
-    }))
+        api_keys: ApiKeys::from_lists(Some(FULL_KEY), Some(READ_KEY)).unwrap(),
+    })
+}
+
+fn app(sim_url: &str, timeout_secs: i64) -> axum::Router {
+    router(state(sim_url, timeout_secs))
+}
+
+fn bearer(key: &str) -> String {
+    format!("Bearer {key}")
 }
 
 fn body_json(reference: &str, amount_cents: u64) -> String {
@@ -63,6 +77,7 @@ fn post_payment(key: &str, body: String) -> Request<Body> {
     Request::post("/payments")
         .header("content-type", "application/json")
         .header("Idempotency-Key", key)
+        .header(header::AUTHORIZATION, bearer(FULL_KEY))
         .body(Body::from(body))
         .unwrap()
 }
@@ -85,7 +100,10 @@ async fn submit_settles_and_replays_idempotently() {
     // And it is queryable.
     let (status, got) = call(
         &app,
-        Request::get("/payments/r1").body(Body::empty()).unwrap(),
+        Request::get("/payments/r1")
+            .header(header::AUTHORIZATION, bearer(FULL_KEY))
+            .body(Body::empty())
+            .unwrap(),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -98,6 +116,7 @@ async fn missing_idempotency_key_is_a_400() {
     let app = app(&sim, 20);
     let req = Request::post("/payments")
         .header("content-type", "application/json")
+        .header(header::AUTHORIZATION, bearer(FULL_KEY))
         .body(Body::from(body_json("REST0002", 125_000)))
         .unwrap();
     let (status, _) = call(&app, req).await;
@@ -130,6 +149,7 @@ async fn timeout_then_reconcile_endpoint_resolves_to_settled() {
 
     let reconcile = || {
         Request::post("/payments/r4/reconcile")
+            .header(header::AUTHORIZATION, bearer(FULL_KEY))
             .body(Body::empty())
             .unwrap()
     };
@@ -157,6 +177,7 @@ async fn ops_summary_reports_states_and_outbox() {
     let (status, view) = call(
         &app,
         Request::post("/payments/o2/reconcile")
+            .header(header::AUTHORIZATION, bearer(FULL_KEY))
             .body(Body::empty())
             .unwrap(),
     )
@@ -166,7 +187,10 @@ async fn ops_summary_reports_states_and_outbox() {
 
     let (status, view) = call(
         &app,
-        Request::get("/ops/summary").body(Body::empty()).unwrap(),
+        Request::get("/ops/summary")
+            .header(header::AUTHORIZATION, bearer(READ_KEY))
+            .body(Body::empty())
+            .unwrap(),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{view}");
@@ -177,5 +201,187 @@ async fn ops_summary_reports_states_and_outbox() {
     assert!(
         view["oldest_unresolved_age_secs"].is_i64(),
         "unresolved age must be reported: {view}"
+    );
+}
+
+// ---------------------------------------------------------------- auth --
+
+/// The access level every route is expected to have. Adding, removing or
+/// re-levelling a route fails `route_table_is_the_reviewed_one` until this
+/// table is updated too — which puts the access decision in front of a
+/// reviewer instead of letting a route inherit whatever it got.
+const EXPECTED_ROUTES: &[(Method, &str, Access)] = &[
+    (Method::GET, "/healthz", Access::Public),
+    (Method::POST, "/payments", Access::Write),
+    (Method::GET, "/payments/{key}", Access::Read),
+    (Method::POST, "/payments/{key}/reconcile", Access::Write),
+    (Method::GET, "/ops/summary", Access::Read),
+];
+
+/// A concrete request for a route template: `{key}` becomes a sample key.
+fn request_for(method: &Method, template: &str, authorization: Option<&str>) -> Request<Body> {
+    let mut req = Request::builder()
+        .method(method.clone())
+        .uri(template.replace("{key}", "some-key"));
+    if let Some(value) = authorization {
+        req = req.header(header::AUTHORIZATION, value);
+    }
+    req.body(Body::empty()).unwrap()
+}
+
+#[tokio::test]
+async fn route_table_is_the_reviewed_one() {
+    // No request is sent; the sim URL is never dialled.
+    let table = route_table(state("http://127.0.0.1:9", 20));
+    let actual: Vec<_> = table
+        .iter()
+        .map(|r| (r.method.clone(), r.path, r.access))
+        .collect();
+    assert_eq!(
+        actual,
+        EXPECTED_ROUTES.to_vec(),
+        "the router's routes changed: state each new route's access level in EXPECTED_ROUTES"
+    );
+    let public: Vec<_> = table
+        .iter()
+        .filter(|r| r.access == Access::Public)
+        .map(|r| r.path)
+        .collect();
+    assert_eq!(public, ["/healthz"], "only the liveness probe is public");
+}
+
+#[tokio::test]
+async fn every_protected_route_rejects_missing_and_wrong_credentials() {
+    let app = app("http://127.0.0.1:9", 20);
+    let table = route_table(state("http://127.0.0.1:9", 20));
+    let protected: Vec<_> = table
+        .iter()
+        .filter(|r| r.access != Access::Public)
+        .collect();
+    assert!(!protected.is_empty());
+
+    let wrong = bearer("test-only-wrong-key-00000000000000000000000000");
+    let cases: [(Option<&str>, &str); 5] = [
+        (None, "no Authorization header"),
+        (Some(wrong.as_str()), "unknown key"),
+        (Some("Basic dGVzdDp0ZXN0"), "wrong scheme"),
+        (Some("Bearer"), "empty bearer"),
+        (Some(FULL_KEY), "key without the Bearer scheme"),
+    ];
+    for route in &protected {
+        for (authorization, why) in cases {
+            let response = app
+                .clone()
+                .oneshot(request_for(&route.method, route.path, authorization))
+                .await
+                .unwrap();
+            assert_eq!(
+                response.status(),
+                StatusCode::UNAUTHORIZED,
+                "{} {} with {why}",
+                route.method,
+                route.path
+            );
+            let challenge = response
+                .headers()
+                .get(header::WWW_AUTHENTICATE)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or_default()
+                .to_string();
+            assert!(challenge.starts_with("Bearer realm="), "{challenge}");
+            let bytes = response.into_body().collect().await.unwrap().to_bytes();
+            let body = String::from_utf8_lossy(&bytes);
+            assert!(
+                !body.contains("test-only"),
+                "a credential leaked into the body: {body}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn read_only_key_reads_but_gets_403_on_writes() {
+    let sim = start_sim();
+    let app = app(&sim, 20);
+    let table = route_table(state(&sim, 20));
+    let read_only = bearer(READ_KEY);
+
+    for route in table.iter().filter(|r| r.access == Access::Write) {
+        let response = app
+            .clone()
+            .oneshot(request_for(&route.method, route.path, Some(&read_only)))
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            StatusCode::FORBIDDEN,
+            "{} {} with a read-only key",
+            route.method,
+            route.path
+        );
+    }
+    for route in table.iter().filter(|r| r.access == Access::Read) {
+        let response = app
+            .clone()
+            .oneshot(request_for(&route.method, route.path, Some(&read_only)))
+            .await
+            .unwrap();
+        let status = response.status();
+        assert!(
+            status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
+            "{} {} refused a read-only key: {status}",
+            route.method,
+            route.path
+        );
+    }
+}
+
+#[tokio::test]
+async fn full_key_is_accepted_on_every_protected_route() {
+    let sim = start_sim();
+    let app = app(&sim, 20);
+    let table = route_table(state(&sim, 20));
+    let full = bearer(FULL_KEY);
+    for route in table.iter().filter(|r| r.access != Access::Public) {
+        let response = app
+            .clone()
+            .oneshot(request_for(&route.method, route.path, Some(&full)))
+            .await
+            .unwrap();
+        let status = response.status();
+        // Past the gate: whatever the handler says (400 for a POST without
+        // Idempotency-Key, 404 for an unknown payment), it is not auth.
+        assert!(
+            status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
+            "{} {} refused a full-access key: {status}",
+            route.method,
+            route.path
+        );
+    }
+}
+
+#[tokio::test]
+async fn healthz_needs_no_credential() {
+    let app = app("http://127.0.0.1:9", 20);
+    let (status, body) = call(&app, Request::get("/healthz").body(Body::empty()).unwrap()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, "ok");
+}
+
+#[tokio::test]
+async fn wrong_method_on_a_protected_path_is_still_gated() {
+    // Not in the table (only POST /payments is): protected by default.
+    let app = app("http://127.0.0.1:9", 20);
+    let (status, _) = call(&app, request_for(&Method::GET, "/payments", None)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, _) = call(
+        &app,
+        request_for(&Method::GET, "/payments", Some(&bearer(READ_KEY))),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "unlisted routes need full access"
     );
 }

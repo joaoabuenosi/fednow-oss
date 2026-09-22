@@ -1,6 +1,7 @@
 # Quick Start — send your first FedNow payment in 5 minutes
 
-No Rust knowledge required. You need **Docker** (with compose) and `curl`.
+No Rust knowledge required. You need **Docker** (with compose), `curl` and
+`openssl` (to generate an API key).
 Every command and every output below was executed against the real code —
 what you see is what you get.
 
@@ -9,8 +10,17 @@ what you see is what you get.
 ```sh
 git clone https://github.com/joaoabuenosi/fednow-oss.git
 cd fednow-oss
+export FEDNOW_GW_API_KEY="$(openssl rand -hex 32)"
 docker compose up --build
 ```
+
+The gateway's REST API is authenticated, and the gateway **refuses to start
+without a key**; there is no unauthenticated mode. The key never goes in a
+file. You generate a random one, compose passes it to the gateway, and every
+request below sends it as `Authorization: Bearer $FEDNOW_GW_API_KEY`. Forget
+the `export` and compose stops with `required variable FEDNOW_GW_API_KEY is
+missing a value`. Use the same shell for the steps below, or export the same
+key again in the new one.
 
 Two services come up:
 
@@ -20,12 +30,14 @@ Two services come up:
   API, event-sourced state machine, outbox, background reconciler.
 
 > Prefer raw binaries? `cargo run -p fednow-sim` and
-> `FEDNOW_GW_SOUTHBOUND=mq cargo run -p fednow-gateway` do the same.
+> `FEDNOW_GW_API_KEYS="$FEDNOW_GW_API_KEY" FEDNOW_GW_SOUTHBOUND=mq cargo run -p fednow-gateway`
+> do the same.
 
 ## 2. Send a payment that settles
 
 ```sh
 curl -s -X POST http://localhost:8090/payments \
+  -H "Authorization: Bearer $FEDNOW_GW_API_KEY" \
   -H "content-type: application/json" \
   -H "Idempotency-Key: quickstart-1" \
   -d '{
@@ -50,7 +62,8 @@ That is how the real service behaves, and the gateway is built around it.
 Ask again a couple of seconds later:
 
 ```sh
-curl -s http://localhost:8090/payments/quickstart-1
+curl -s -H "Authorization: Bearer $FEDNOW_GW_API_KEY" \
+  http://localhost:8090/payments/quickstart-1
 ```
 
 ```json
@@ -60,8 +73,10 @@ curl -s http://localhost:8090/payments/quickstart-1
 The pacs.002 advice (`ACSC`) arrived on the queue, the background pump
 applied it, the state machine settled. **The money moved.**
 
-Two rules you just used without noticing:
+Three rules you just used without noticing:
 
+- Every call needs the **API key**. Without it you get `401`. Only
+  `GET /healthz` is open, for probes.
 - The `Idempotency-Key` header is **mandatory**. Repeat the exact same POST
   and you get the settled payment back — nothing touches the wire twice.
 - Amounts are **integer cents**. No floats anywhere near money.
@@ -73,6 +88,7 @@ Amounts steer the simulator (Stripe-sandbox style). Anything ending in
 
 ```sh
 curl -s -X POST http://localhost:8090/payments \
+  -H "Authorization: Bearer $FEDNOW_GW_API_KEY" \
   -H "content-type: application/json" \
   -H "Idempotency-Key: quickstart-2" \
   -d '{ "reference": "QS0002", "amount_cents": 125011,
@@ -98,6 +114,7 @@ money in production when handled wrong (resend = double pay).
 
 ```sh
 curl -s -X POST http://localhost:8090/payments \
+  -H "Authorization: Bearer $FEDNOW_GW_API_KEY" \
   -H "content-type: application/json" \
   -H "Idempotency-Key: quickstart-3" \
   -d '{ "reference": "QS0003", "amount_cents": 125033,
@@ -109,7 +126,7 @@ curl -s -X POST http://localhost:8090/payments \
 Now just watch:
 
 ```sh
-watch -n 2 'curl -s http://localhost:8090/payments/quickstart-3'
+watch -n 2 "curl -s -H 'Authorization: Bearer $FEDNOW_GW_API_KEY' http://localhost:8090/payments/quickstart-3"
 ```
 
 The payment sits in `ACK_PENDING`, crosses the presumed timeout into
@@ -135,6 +152,7 @@ anything reaches the wire:
 ```sh
 # category_purpose must be CONS or BIZZ
 curl -s -X POST http://localhost:8090/payments \
+  -H "Authorization: Bearer $FEDNOW_GW_API_KEY" \
   -H "content-type: application/json" -H "Idempotency-Key: quickstart-4" \
   -d '{ "reference": "QS0004", "amount_cents": 125000, "category_purpose": "WRONG",
     "debtor_name": "Jane Example",   "debtor_account": "123456789012",
@@ -175,9 +193,10 @@ against this exact stack in CI:
 **Python** ([`sdk/python/`](sdk/python/), zero dependencies):
 
 ```python
+import os
 from fednow_client import GatewayClient
 
-gw = GatewayClient("http://localhost:8090")
+gw = GatewayClient("http://localhost:8090", api_key=os.environ["FEDNOW_GW_API_KEY"])
 gw.submit("order-1", reference="ORDER0001", amount_cents=125_000,
           debtor_name="Jane", debtor_account="123456789012",
           creditor_name="John", creditor_account="987654321000",
@@ -188,7 +207,7 @@ print(gw.wait_final("order-1").state)   # SETTLED
 **Java 17** ([`sdk/java/`](sdk/java/)):
 
 ```java
-var gw = new GatewayClient("http://localhost:8090");
+var gw = new GatewayClient("http://localhost:8090", System.getenv("FEDNOW_GW_API_KEY"));
 gw.submit("order-1", SubmitPaymentRequest.builder()
     .reference("ORDER0001").amountCents(125_000)
     .debtorName("Jane").debtorAccount("123456789012")
@@ -201,7 +220,9 @@ System.out.println(gw.waitFinal("order-1").state());   // SETTLED
 
 `GET /ops/summary` is the operator's glance — counts by state, outbox
 depth, and the age of the oldest unresolved payment (the number to page
-on). Full endpoint and environment reference:
+on). For monitoring, give it a **read-only** key
+(`FEDNOW_GW_READ_API_KEYS`), which can read but gets `403` on submit and
+reconcile. Full endpoint, authentication and environment reference:
 [gateway README](gateway/README.md).
 
 ## Where to go next

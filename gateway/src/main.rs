@@ -5,10 +5,24 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use fednow_gateway::http::{router, AppState, ReconcileConfig};
-use fednow_gateway::{AnyPort, HttpSimPort, MqSimPort, PaymentService, SqliteStore};
+use fednow_gateway::{AnyPort, ApiKeys, HttpSimPort, MqSimPort, PaymentService, SqliteStore};
 
 #[tokio::main]
 async fn main() {
+    // Credentials first: a gateway without them must not open its store,
+    // start its sweeper or bind its port. Fail closed, never run open.
+    let api_keys = match ApiKeys::from_env() {
+        Ok(keys) => keys,
+        Err(e) => {
+            eprintln!("fednow-gateway: {e}");
+            std::process::exit(2);
+        }
+    };
+    // A fixed line on purpose: nothing derived from the keys (not even how
+    // many there are) goes to the log, so there is no data flow from the
+    // credential store to stderr for anyone, or any analyser, to audit.
+    eprintln!("api keys: loaded; authentication required on every route but /healthz");
+
     let addr = std::env::var("FEDNOW_GW_ADDR").unwrap_or_else(|_| "0.0.0.0:8090".to_string());
     let sim_url =
         std::env::var("FEDNOW_GW_SIM_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
@@ -36,6 +50,7 @@ async fn main() {
     let state = Arc::new(AppState {
         service: PaymentService::new(store, port, sender_rtn),
         reconcile,
+        api_keys,
     });
 
     // Background reconciler: sweeps every payment on an interval. Blocking

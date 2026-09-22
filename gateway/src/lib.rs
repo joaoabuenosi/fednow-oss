@@ -20,6 +20,7 @@
 //! (REST/gRPC northbound, MQ southbound), durable storage and the outbox
 //! publisher arrive in later iterations on top of this core.
 
+pub mod auth;
 pub mod http;
 pub mod payment;
 pub mod reconciler;
@@ -28,6 +29,7 @@ pub mod southbound;
 pub mod sqlite;
 pub mod store;
 
+pub use auth::{Access, ApiKeys, AuthConfigError, Role, RouteSpec};
 pub use payment::{advice_from_pacs002, AdviceStatus, Payment, PaymentEvent, PaymentState};
 pub use reconciler::{reconciliation_action, ReconciliationAction};
 pub use service::{OpsSummary, PaymentService, ServiceError, SubmitRequest};

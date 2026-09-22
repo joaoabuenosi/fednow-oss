@@ -7,6 +7,8 @@ Design notes, mirroring the gateway's own rules:
   key is always safe (the settled payment comes back; nothing touches the
   wire twice).
 - Amounts are **integer cents**. There is no float anywhere in this module.
+- Every call except ``healthy`` needs an API key: the gateway rejects
+  anonymous requests with 401, and a read-only key on a write with 403.
 - ``SETTLED`` and ``REJECTED`` are the only final states.
   ``TIMEOUT_UNRESOLVED`` is a work item the gateway's reconciler resolves
   via pacs.028 — ``wait_final`` keeps waiting through it.
@@ -46,6 +48,15 @@ class UnknownPayment(GatewayError, KeyError):
     """No payment exists under this idempotency key (HTTP 404)."""
 
 
+class Unauthorized(GatewayError):
+    """Missing or unknown API key (HTTP 401)."""
+
+
+class Forbidden(GatewayError):
+    """The API key is valid but may not do this — a read-only key on a
+    write (HTTP 403)."""
+
+
 @dataclass(frozen=True)
 class Payment:
     """The gateway's view of one payment."""
@@ -80,7 +91,8 @@ class Payment:
 class GatewayClient:
     """Client for one fednow-gateway instance.
 
-    >>> gw = GatewayClient("http://localhost:8090")
+    >>> gw = GatewayClient("http://localhost:8090",
+    ...                    api_key=os.environ["FEDNOW_GW_API_KEY"])
     >>> p = gw.submit("order-1", reference="ORDER0001", amount_cents=125000,
     ...               debtor_name="Jane", debtor_account="123456789012",
     ...               creditor_name="John", creditor_account="987654321000",
@@ -90,9 +102,20 @@ class GatewayClient:
     'SETTLED'
     """
 
-    def __init__(self, base_url: str, timeout: float = 10.0):
+    def __init__(
+        self,
+        base_url: str,
+        timeout: float = 10.0,
+        *,
+        api_key: Optional[str] = None,
+    ):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        # Private and never echoed: not in repr, not in error messages.
+        self._api_key = api_key
+
+    def __repr__(self) -> str:
+        return f"GatewayClient({self.base_url!r})"
 
     # -- API calls ---------------------------------------------------------
 
@@ -208,6 +231,8 @@ class GatewayClient:
             data=json.dumps(body).encode() if body is not None else None,
         )
         req.add_header("content-type", "application/json")
+        if self._api_key is not None:
+            req.add_header("Authorization", f"Bearer {self._api_key}")
         for name, value in (headers or {}).items():
             req.add_header(name, value)
         try:
@@ -219,6 +244,10 @@ class GatewayClient:
     @staticmethod
     def _map_error(e: urllib.error.HTTPError) -> GatewayError:
         detail = e.read().decode(errors="replace")
+        if e.code == 401:
+            return Unauthorized(detail or "a valid API key is required")
+        if e.code == 403:
+            return Forbidden(detail or "this API key may not do that")
         if e.code == 404:
             return UnknownPayment(detail or "unknown payment")
         if e.code == 422:
