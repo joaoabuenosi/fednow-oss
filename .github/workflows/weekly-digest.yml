@@ -9,6 +9,14 @@ on:
   schedule:
     - cron: "0 20 * * 5"
   workflow_dispatch:
+    inputs:
+      dry_run:
+        # Manual test run: builds the same digest and writes it to the run's
+        # Summary page instead of opening an issue. The cron never sets it, so
+        # the Friday run keeps opening the issue as before.
+        description: "Only print the digest to the run Summary; do not open the issue"
+        type: boolean
+        default: false
 
 # Default to nothing; each job asks for exactly what it needs.
 permissions: {}
@@ -38,7 +46,16 @@ jobs:
           fetch-depth: 0
           # This job reads the tree and writes an issue; it never pushes.
           persist-credentials: false
-      - uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+      # v9 still runs `script` as the body of an async function (CommonJS
+      # bundle) with `require` injected, so `require("child_process")` keeps
+      # working. What v9 broke is `require("@actions/github")` (now ESM-only)
+      # and redeclaring the injected `getOctokit` with const/let — this script
+      # does neither. Upstream: README "Breaking Changes" > V9 / V8 (Node 24).
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          # `inputs.dry_run` is empty on the cron trigger, so only an explicit
+          # dispatch with the box ticked skips the issue.
+          DRY_RUN: ${{ inputs.dry_run }}
         with:
           script: |
             const { execSync } = require("child_process");
@@ -69,4 +86,10 @@ jobs:
               sec("Failed workflow runs this week", runs),
               "Qualitative reading and next roadmap step: `/esteira:standup` in the repository.",
             ].join("\n");
-            await github.rest.issues.create({ ...context.repo, title: `Weekly standup — ${new Date().toISOString().slice(0,10)}`, body, labels: ["standup"] });
+            const title = `Weekly standup — ${new Date().toISOString().slice(0,10)}`;
+            if (process.env.DRY_RUN === "true") {
+              core.info(`dry run (${process.version}): not opening "${title}"\n${body}`);
+              await core.summary.addHeading(`${title} (dry run)`, 2).addRaw(body, true).write();
+              return;
+            }
+            await github.rest.issues.create({ ...context.repo, title, body, labels: ["standup"] });
