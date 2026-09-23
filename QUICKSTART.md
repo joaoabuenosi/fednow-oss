@@ -183,17 +183,27 @@ response formats are this project's own. It is **not** the Federal Reserve's
 Network Intelligence API. This project has no client for that API: its
 specification is not public ([#95](https://github.com/joaoabuenosi/fednow-oss/issues/95)).
 
-Stop the stack (`Ctrl-C`) and start it again with the check on:
+Stop the stack (`Ctrl-C`) and start it again with the check on. This time also
+create an **operator key**. Only an operator key can release or cancel a
+payment the check holds, and your `FEDNOW_GW_API_KEY` cannot. The application
+that submits payments must not be able to wave its own holds through.
 
 ```sh
 export FEDNOW_GW_RISK_PROVIDER=sim
+export FEDNOW_GW_OPERATOR_KEY="$(openssl rand -hex 32)"
+export FEDNOW_GW_OPERATOR_API_KEYS="ops-demo:$FEDNOW_GW_OPERATOR_KEY"
 docker compose up --build
 ```
 
-> Raw binaries: add `FEDNOW_GW_RISK_PROVIDER=sim` to the gateway command.
+`ops-demo` is the key's label. The audit trail records it as
+`operator:ops-demo` on every release or cancel made with that key.
+
+> Raw binaries: add `FEDNOW_GW_RISK_PROVIDER=sim` and
+> `FEDNOW_GW_OPERATOR_API_KEYS="$FEDNOW_GW_OPERATOR_API_KEYS"` to the gateway command.
 
 The gateway logs
-`risk check: on (provider sim, timeout 1000 ms, max in flight 32, on unavailable: hold)`.
+`risk check: on (provider sim, timeout 1000 ms, max in flight 32, on unavailable: hold)`
+and `held payments: releasable for 14400 s by an operator key, then cancelled (hold_expired)`.
 Amounts ending in `.77` are held by the demo provider:
 
 ```sh
@@ -208,10 +218,12 @@ curl -s -X POST http://localhost:8090/payments \
 ```
 
 ```json
-{"idempotency_key":"quickstart-5","state":"HELD","message_identification":"20260922991000009QS0005","end_to_end_identification":"QS0005","uetr":null,"queries_sent":0,"rejection_reason":null,"events":3,"risk":{"outcome":"hold","reason":"sim.hold","source":"provider"}}
+{"idempotency_key":"quickstart-5","state":"HELD","message_identification":"20260922991000009QS0005","end_to_end_identification":"QS0005","uetr":null,"queries_sent":0,"rejection_reason":null,"events":4,"risk":{"outcome":"hold","reason":"sim.hold","source":"provider"},"hold":{"held_at_unix":1790110339,"releasable_until_unix":1790124739,"resolution":null}}
 ```
 
-**`HELD`, 3 events:** created, validated, risk-checked. Nothing was sent. The
+**`HELD`, 4 events:** created, validated, risk-checked, parked. Nothing was
+sent. The built message is parked outside the outbox, and the history keeps
+only its SHA-256. The
 same POST with `125088` (and a new key) comes back `REFUSED` with
 `"reason":"sim.refuse"`.
 
@@ -219,7 +231,7 @@ Now the case that decides the policy: the provider does not answer in time.
 `125099` makes the demo provider take 5 seconds, and the gateway waits 1:
 
 ```json
-{"idempotency_key":"quickstart-7","state":"HELD", ... ,"events":3,"risk":{"outcome":"hold","reason":"risk_check_timeout","source":"timeout"}}
+{"idempotency_key":"quickstart-7","state":"HELD", ... ,"events":4,"risk":{"outcome":"hold","reason":"risk_check_timeout","source":"timeout"}, ... }
 ```
 
 The provider never decided; the **failure policy** did. The default is
@@ -230,16 +242,62 @@ the audit trail still records that the check did not happen. Any other amount
 is allowed and settles as before, now with
 `"risk":{"outcome":"allow","reason":null,"source":"provider"}` in the view.
 
-`/ops/summary` shows the stopped payments by state
-(`"by_state":{"HELD":2,"REFUSED":1,...}`). This version has no route that
-releases a held payment. Resubmit under a new key after review. The full
-reference (timeouts, the concurrency budget, what the audit event records and
-what it never records) is in the
-[gateway README](gateway/README.md#pre-send-risk-check).
+**Resolve the holds.** Someone reviewed `quickstart-5` and it is fine. Your
+submitting key cannot release it:
+
+```sh
+curl -s -X POST http://localhost:8090/payments/quickstart-5/release \
+  -H "Authorization: Bearer $FEDNOW_GW_API_KEY" \
+  -H "content-type: application/json" -d '{"reason": "reviewed_ok"}'
+```
+
+```json
+{"detail":"this route needs an operator key (FEDNOW_GW_OPERATOR_API_KEYS); full-access and read-only keys cannot resolve a held payment","error":"forbidden"}
+```
+
+The operator key can:
+
+```sh
+curl -s -X POST http://localhost:8090/payments/quickstart-5/release \
+  -H "Authorization: Bearer $FEDNOW_GW_OPERATOR_KEY" \
+  -H "content-type: application/json" -d '{"reason": "reviewed_ok"}'
+```
+
+```json
+{"idempotency_key":"quickstart-5","state":"ACK_PENDING","message_identification":"20260922991000009QS0005","end_to_end_identification":"QS0005","uetr":null,"queries_sent":0,"rejection_reason":null,"events":6,"risk":{"outcome":"hold","reason":"sim.hold","source":"provider"},"hold":{"held_at_unix":1790110339,"resolution":{"action":"released","actor":"operator:ops-demo","reason":"reviewed_ok","at_unix":1790110339}}}
+```
+
+The parked message, byte for byte the one that was checked, went to the outbox
+and onto the wire. A couple of seconds later `GET /payments/quickstart-5` says
+`SETTLED`, with 7 events. The risk verdict stays `hold` in the view, because the
+history is not rewritten. Releasing again gets `409`
+`{"error":"not_held","state":"SETTLED"}`, and nothing is sent twice.
+
+The timed-out one you cancel instead:
+
+```sh
+curl -s -X POST http://localhost:8090/payments/quickstart-7/cancel \
+  -H "Authorization: Bearer $FEDNOW_GW_OPERATOR_KEY" \
+  -H "content-type: application/json" -d '{"reason": "confirmed_fraud"}'
+```
+
+It ends `CANCELLED`, never sent, with
+`"resolution":{"action":"cancelled","actor":"operator:ops-demo","reason":"confirmed_fraud",...}`.
+The reason must be a short code: `{"reason": "customer called"}` gets `400`
+`invalid_reason`, because free-text notes are where account numbers and names
+end up. A hold nobody resolves within `FEDNOW_GW_HOLD_MAX_AGE_SECS` (4 hours by
+default) is cancelled by the gateway with `"actor":"gateway","reason":"hold_expired"`.
+
+`/ops/summary` shows the outcomes by state
+(`"by_state":{"CANCELLED":1,"REFUSED":1,...}`). The full reference is in the
+gateway README: timeouts, the concurrency budget, what the audit events record
+and never record, and why a release sends the parked message instead of a
+rebuilt one. See [Pre-send risk check](gateway/README.md#pre-send-risk-check)
+and [Resolving a held payment](gateway/README.md#resolving-a-held-payment).
 
 | Amount ends in | Demo risk provider (only with `FEDNOW_GW_RISK_PROVIDER=sim`) |
 |---|---|
-| `.77` | hold → `HELD` |
+| `.77` | hold → `HELD` (then release → `SUBMITTED` → …, or cancel → `CANCELLED`) |
 | `.88` | refuse → `REFUSED` |
 | `.98` | provider error (HTTP 503) → the failure policy decides (`HELD` by default) |
 | `.99` | answers after 5 s → timeout → the failure policy decides (`HELD` by default) |
@@ -296,8 +354,9 @@ System.out.println(gw.waitFinal("order-1").state());   // SETTLED
 depth, and the age of the oldest unresolved payment (the number to page
 on). For monitoring, give it a **read-only** key
 (`FEDNOW_GW_READ_API_KEYS`), which can read but gets `403` on submit and
-reconcile. Full endpoint, authentication and environment reference:
-[gateway README](gateway/README.md).
+reconcile. Held payments are released or cancelled with an **operator**
+key (`FEDNOW_GW_OPERATOR_API_KEYS`, step 6). Full endpoint, authentication
+and environment reference: [gateway README](gateway/README.md).
 
 ## Where to go next
 

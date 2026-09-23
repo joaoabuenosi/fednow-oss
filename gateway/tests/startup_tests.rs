@@ -69,11 +69,46 @@ fn refuses_a_weak_key_without_printing_it() {
 }
 
 #[test]
+fn refuses_bad_operator_keys_and_hold_ages_without_printing_keys() {
+    const FULL: &str = "test-only-full-access-key-0123456789abcdef";
+    for (var, value, expect) in [
+        (
+            "FEDNOW_GW_OPERATOR_API_KEYS",
+            "test-only-operator-key-without-a-label-0123",
+            "must be label:key",
+        ),
+        (
+            "FEDNOW_GW_OPERATOR_API_KEYS",
+            "Alice Smith:test-only-operator-key-0123456789abcdef",
+            "must be label:key",
+        ),
+        (
+            "FEDNOW_GW_OPERATOR_API_KEYS",
+            "ops-a:test-only-full-access-key-0123456789abcdef",
+            "exactly one tier",
+        ),
+        ("FEDNOW_GW_HOLD_MAX_AGE_SECS", "0", "positive integer"),
+        ("FEDNOW_GW_HOLD_MAX_AGE_SECS", "forever", "positive integer"),
+    ] {
+        let (status, stderr) = run_gateway(&[("FEDNOW_GW_API_KEYS", FULL), (var, value)]);
+        assert_eq!(status.code(), Some(2), "{var}={value}: {stderr}");
+        assert!(stderr.contains(var), "{stderr}");
+        assert!(stderr.contains(expect), "{stderr}");
+        assert!(
+            !stderr.contains("test-only"),
+            "a key reached stderr: {stderr}"
+        );
+        assert!(!stderr.contains("listening"), "{stderr}");
+    }
+}
+
+#[test]
 fn a_normal_start_never_writes_a_key_to_stderr() {
     use std::io::{BufRead, BufReader};
 
     const FULL: &str = "test-only-full-access-key-0123456789abcdef";
     const READ: &str = "test-only-read-only-key-0123456789abcdef";
+    const OPS: &str = "ops-a:test-only-operator-key-0123456789abcdef";
     let db = std::env::temp_dir().join(format!("fednow-gw-start-{}.db", std::process::id()));
     let mut child = Command::new(env!("CARGO_BIN_EXE_fednow-gateway"))
         .env_clear()
@@ -81,6 +116,7 @@ fn a_normal_start_never_writes_a_key_to_stderr() {
         .env("FEDNOW_GW_DB", &db)
         .env("FEDNOW_GW_API_KEYS", FULL)
         .env("FEDNOW_GW_READ_API_KEYS", READ)
+        .env("FEDNOW_GW_OPERATOR_API_KEYS", OPS)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()

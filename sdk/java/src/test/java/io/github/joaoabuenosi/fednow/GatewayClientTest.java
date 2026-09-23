@@ -129,9 +129,10 @@ class GatewayClientTest {
 
     @Test
     void riskCheckStatesAreFinal() {
-        // HELD / REFUSED: the gateway's pre-send risk check stopped the
-        // payment; nothing was sent, so waitFinal must not poll to timeout.
-        for (String state : List.of("HELD", "REFUSED")) {
+        // HELD / REFUSED / CANCELLED: the gateway's pre-send risk check
+        // stopped the payment; nothing was sent, so waitFinal must not poll
+        // to timeout (HELD waits for a person, not for an advice).
+        for (String state : List.of("HELD", "REFUSED", "CANCELLED")) {
             Payment p = new Payment("k1", state, "m", "e", null, 0, null, 3);
             assertTrue(p.isFinal(), state);
         }

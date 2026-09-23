@@ -17,9 +17,12 @@ use fednow_core::validate::validate_pacs008;
 use fednow_core::{pacs002, pacs008};
 use thiserror::Error;
 
-use crate::payment::{advice_from_pacs002, Payment, PaymentEvent, TransitionError};
+use crate::hold::{HoldPolicy, EXPIRED_REASON, GATEWAY_ACTOR};
+use crate::payment::{
+    advice_from_pacs002, message_sha256, Payment, PaymentEvent, PaymentState, TransitionError,
+};
 use crate::reconciler::{reconciliation_action, ReconciliationAction};
-use crate::risk::{RiskCheckInput, RiskGate, RiskOutcome};
+use crate::risk::{sanitize_reason, RiskCheckInput, RiskGate, RiskOutcome};
 use crate::southbound::{FedNowPort, PortError, SubmitOutcome};
 use crate::store::{CreateOutcome, PaymentStore};
 
@@ -57,6 +60,22 @@ pub enum ServiceError {
     Build(String),
     #[error("unknown payment '{0}'")]
     UnknownPayment(String),
+    /// Release or cancel of a payment that is not `HELD` (never held, already
+    /// released, already cancelled).
+    #[error("payment is not held (state {})", .0.name())]
+    NotHeld(PaymentState),
+    /// The hold outlived [`HoldPolicy::max_age_secs`]; the payment was
+    /// cancelled with `hold_expired` instead of being sent.
+    #[error("the hold expired; the payment was cancelled, not sent")]
+    HoldExpired,
+    /// The payment is held but no parked message is on record (a hold
+    /// recorded before parking existed). It can be cancelled, not released.
+    #[error("no parked message for this held payment; cancel it and resubmit")]
+    NoParkedMessage,
+    /// A release/cancel reason must be a short code (see
+    /// [`crate::risk::sanitize_reason`]); free text is refused, not rewritten.
+    #[error("reason must be a short code: [a-z][a-z0-9_.-]{{0,63}}, no run of five digits")]
+    InvalidReason,
 }
 
 /// The gateway service: a store, a port, and the sending institution's
@@ -68,6 +87,8 @@ pub struct PaymentService<S, P> {
     /// Pre-send risk check. Disabled unless [`Self::with_risk_gate`] is
     /// called: no check runs and no event is recorded.
     risk: RiskGate,
+    /// How long a held payment stays releasable.
+    hold: HoldPolicy,
 }
 
 /// The FedNow Service application identifier (`To` of every outbound query).
@@ -80,7 +101,18 @@ impl<S: PaymentStore, P: FedNowPort> PaymentService<S, P> {
             port,
             sender_routing_number: sender_routing_number.into(),
             risk: RiskGate::disabled(),
+            hold: HoldPolicy::default(),
         }
+    }
+
+    /// Set how long a held payment stays releasable (see [`crate::hold`]).
+    pub fn with_hold_policy(mut self, policy: HoldPolicy) -> Self {
+        self.hold = policy;
+        self
+    }
+
+    pub fn hold_policy(&self) -> HoldPolicy {
+        self.hold
     }
 
     /// Put a pre-send risk check on the send path (see [`crate::risk`]).
@@ -91,6 +123,13 @@ impl<S: PaymentStore, P: FedNowPort> PaymentService<S, P> {
 
     pub fn load(&self, idempotency_key: &str) -> Option<Payment> {
         self.store.load(idempotency_key)
+    }
+
+    /// The underlying store, for inspection (ops tooling, tests). Writing
+    /// through it bypasses the service: the store still enforces the state
+    /// machine and one outbox entry per payment, but nothing else.
+    pub fn store(&self) -> &S {
+        &self.store
     }
 
     /// Submit a payment, idempotently: resubmitting an existing key returns
@@ -163,20 +202,29 @@ impl<S: PaymentStore, P: FedNowPort> PaymentService<S, P> {
             creditor_account: req.creditor_account.clone(),
             category_purpose: req.category_purpose.clone(),
         }) {
-            let checked = self.store.append(
-                key,
-                PaymentEvent::RiskChecked {
-                    outcome: verdict.outcome,
-                    reason: verdict.reason,
-                    source: verdict.source,
-                    provider: verdict.provider.to_string(),
-                    elapsed_ms: verdict.elapsed_ms,
-                    at_unix: now_unix,
-                },
-            )?;
-            if verdict.outcome != RiskOutcome::Allow {
-                // HELD or REFUSED: nothing reaches the outbox.
-                return Ok(checked);
+            let checked = PaymentEvent::RiskChecked {
+                outcome: verdict.outcome,
+                reason: verdict.reason,
+                source: verdict.source,
+                provider: verdict.provider.to_string(),
+                elapsed_ms: verdict.elapsed_ms,
+                at_unix: now_unix,
+            };
+            match verdict.outcome {
+                RiskOutcome::Allow => {
+                    self.store.append(key, checked)?;
+                }
+                // HELD: the checked message is parked, not queued, in the
+                // same transaction as the hold. Only a release moves it.
+                RiskOutcome::Hold => {
+                    let parked = PaymentEvent::HoldParked {
+                        message_sha256: message_sha256(&xml),
+                        at_unix: now_unix,
+                    };
+                    return Ok(self.store.park(key, vec![checked, parked], xml)?);
+                }
+                // REFUSED: terminal; the message is dropped.
+                RiskOutcome::Refuse => return Ok(self.store.append(key, checked)?),
             }
         }
 
@@ -384,6 +432,127 @@ impl<S: PaymentStore, P: FedNowPort> PaymentService<S, P> {
 }
 
 impl<S: PaymentStore, P: FedNowPort> PaymentService<S, P> {
+    /// Release a held payment: send exactly the message that was parked when
+    /// it was held, then drain the outbox as `submit` does.
+    ///
+    /// `actor` names who released it (`operator:<label>`, from the caller's
+    /// key, never from the request body); `reason` must be a short code. A
+    /// hold past [`HoldPolicy::max_age_secs`] is cancelled with
+    /// `hold_expired` instead, and [`ServiceError::HoldExpired`] is returned.
+    pub fn release(
+        &self,
+        idempotency_key: &str,
+        actor: &str,
+        reason: &str,
+        now_unix: i64,
+    ) -> Result<Payment, ServiceError> {
+        let payment = self.held(idempotency_key, reason)?;
+        if payment
+            .held_at_unix
+            .is_some_and(|at| self.hold.is_expired(at, now_unix))
+        {
+            self.expire(idempotency_key, now_unix)?;
+            return Err(ServiceError::HoldExpired);
+        }
+        let Some(expected) = payment.held_message_sha256.clone() else {
+            return Err(ServiceError::NoParkedMessage);
+        };
+        let event = PaymentEvent::HoldReleased {
+            actor: actor.to_string(),
+            reason: reason.to_string(),
+            message_sha256: expected,
+            at_unix: now_unix,
+        };
+        if let Err(e) = self.store.release_parked(idempotency_key, event) {
+            return Err(self.explain(idempotency_key, e));
+        }
+        self.publish_pending(now_unix);
+        self.store
+            .load(idempotency_key)
+            .ok_or_else(|| ServiceError::UnknownPayment(idempotency_key.to_string()))
+    }
+
+    /// Cancel a held payment: it ends `CANCELLED`, never sent, and its parked
+    /// message is deleted. Allowed at any age.
+    pub fn cancel(
+        &self,
+        idempotency_key: &str,
+        actor: &str,
+        reason: &str,
+        now_unix: i64,
+    ) -> Result<Payment, ServiceError> {
+        self.held(idempotency_key, reason)?;
+        let event = PaymentEvent::HoldCancelled {
+            actor: actor.to_string(),
+            reason: reason.to_string(),
+            at_unix: now_unix,
+        };
+        self.store
+            .discard_parked(idempotency_key, event)
+            .map_err(|e| self.explain(idempotency_key, e))
+    }
+
+    /// Cancel every hold that outlived the policy (the sweeper calls this).
+    /// Returns how many were cancelled. With no risk provider configured
+    /// there are no holds, and this changes nothing.
+    pub fn expire_holds(&self, now_unix: i64) -> usize {
+        let mut expired = 0;
+        for key in self.store.keys() {
+            let Some(p) = self.store.load(&key) else {
+                continue;
+            };
+            let due = p.state == PaymentState::Held
+                && p.held_at_unix
+                    .is_some_and(|at| self.hold.is_expired(at, now_unix));
+            if due && self.expire(&key, now_unix).is_ok() {
+                expired += 1;
+            }
+        }
+        expired
+    }
+
+    fn expire(&self, idempotency_key: &str, now_unix: i64) -> Result<Payment, ServiceError> {
+        self.store
+            .discard_parked(
+                idempotency_key,
+                PaymentEvent::HoldCancelled {
+                    actor: GATEWAY_ACTOR.to_string(),
+                    reason: EXPIRED_REASON.to_string(),
+                    at_unix: now_unix,
+                },
+            )
+            .map_err(|e| self.explain(idempotency_key, e))
+    }
+
+    /// The payment, if it exists and is `HELD`, and the reason is a code.
+    ///
+    /// Checked in this order on purpose: the payment first (`404`), then its
+    /// state (`409`), then the reason (`400`). A caller learns what is wrong
+    /// with the target before being asked to fix its request; a bad reason
+    /// only matters for a payment that could actually be resolved.
+    fn held(&self, idempotency_key: &str, reason: &str) -> Result<Payment, ServiceError> {
+        let payment = self
+            .store
+            .load(idempotency_key)
+            .ok_or_else(|| ServiceError::UnknownPayment(idempotency_key.to_string()))?;
+        if payment.state != PaymentState::Held {
+            return Err(ServiceError::NotHeld(payment.state));
+        }
+        if sanitize_reason(reason) != reason {
+            return Err(ServiceError::InvalidReason);
+        }
+        Ok(payment)
+    }
+
+    /// Turn a store refusal into what the caller can act on: if the payment
+    /// left `HELD` meanwhile (a concurrent release or cancel won), say so.
+    fn explain(&self, idempotency_key: &str, e: TransitionError) -> ServiceError {
+        match self.store.load(idempotency_key) {
+            Some(p) if p.state != PaymentState::Held => ServiceError::NotHeld(p.state),
+            _ => ServiceError::Transition(e),
+        }
+    }
+
     /// Sweep every known payment through one reconciliation pass. Errors on
     /// individual payments are collected, not fatal — one stuck payment must
     /// not stop the sweep.

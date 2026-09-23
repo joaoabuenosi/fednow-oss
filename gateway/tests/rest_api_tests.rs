@@ -28,6 +28,7 @@ fn start_sim() -> String {
 /// Test-only keys, generated for this file; they authorize nothing anywhere.
 const FULL_KEY: &str = "test-only-full-access-key-0123456789abcdef";
 const READ_KEY: &str = "test-only-read-only-key-0123456789abcdef";
+const OPERATOR_KEY: &str = "test-only-operator-key-0123456789abcdef";
 
 fn state(sim_url: &str, timeout_secs: i64) -> Arc<AppState<InMemoryStore, HttpSimPort>> {
     Arc::new(AppState {
@@ -36,7 +37,10 @@ fn state(sim_url: &str, timeout_secs: i64) -> Arc<AppState<InMemoryStore, HttpSi
             timeout_secs,
             backoff_secs: 0,
         },
-        api_keys: ApiKeys::from_lists(Some(FULL_KEY), Some(READ_KEY)).unwrap(),
+        api_keys: ApiKeys::from_lists(Some(FULL_KEY), Some(READ_KEY))
+            .unwrap()
+            .with_operators(Some(&format!("ops-test:{OPERATOR_KEY}")))
+            .unwrap(),
     })
 }
 
@@ -215,6 +219,8 @@ const EXPECTED_ROUTES: &[(Method, &str, Access)] = &[
     (Method::POST, "/payments", Access::Write),
     (Method::GET, "/payments/{key}", Access::Read),
     (Method::POST, "/payments/{key}/reconcile", Access::Write),
+    (Method::POST, "/payments/{key}/release", Access::Operate),
+    (Method::POST, "/payments/{key}/cancel", Access::Operate),
     (Method::GET, "/ops/summary", Access::Read),
 ];
 
@@ -306,7 +312,10 @@ async fn read_only_key_reads_but_gets_403_on_writes() {
     let table = route_table(state(&sim, 20));
     let read_only = bearer(READ_KEY);
 
-    for route in table.iter().filter(|r| r.access == Access::Write) {
+    for route in table
+        .iter()
+        .filter(|r| matches!(r.access, Access::Write | Access::Operate))
+    {
         let response = app
             .clone()
             .oneshot(request_for(&route.method, route.path, Some(&read_only)))
@@ -336,13 +345,25 @@ async fn read_only_key_reads_but_gets_403_on_writes() {
     }
 }
 
+/// Status of `route` called with `key`, past or at the auth gate.
+async fn status_with(app: &axum::Router, method: &Method, path: &str, key: &str) -> StatusCode {
+    app.clone()
+        .oneshot(request_for(method, path, Some(&bearer(key))))
+        .await
+        .unwrap()
+        .status()
+}
+
 #[tokio::test]
-async fn full_key_is_accepted_on_every_protected_route() {
+async fn full_key_is_accepted_on_every_read_and_write_route() {
     let sim = start_sim();
     let app = app(&sim, 20);
     let table = route_table(state(&sim, 20));
     let full = bearer(FULL_KEY);
-    for route in table.iter().filter(|r| r.access != Access::Public) {
+    for route in table
+        .iter()
+        .filter(|r| matches!(r.access, Access::Read | Access::Write))
+    {
         let response = app
             .clone()
             .oneshot(request_for(&route.method, route.path, Some(&full)))
@@ -384,4 +405,48 @@ async fn wrong_method_on_a_protected_path_is_still_gated() {
         StatusCode::FORBIDDEN,
         "unlisted routes need full access"
     );
+}
+
+#[tokio::test]
+async fn only_an_operator_key_passes_the_operate_routes() {
+    // Separation of duties: the key that submits cannot release its own
+    // holds, and the key that releases cannot submit.
+    let sim = start_sim();
+    let app = app(&sim, 20);
+    let table = route_table(state(&sim, 20));
+    let operate: Vec<_> = table
+        .iter()
+        .filter(|r| r.access == Access::Operate)
+        .collect();
+    assert_eq!(operate.len(), 2, "release and cancel");
+    for route in &operate {
+        for key in [FULL_KEY, READ_KEY] {
+            assert_eq!(
+                status_with(&app, &route.method, route.path, key).await,
+                StatusCode::FORBIDDEN,
+                "{} {} with a non-operator key",
+                route.method,
+                route.path
+            );
+        }
+        let status = status_with(&app, &route.method, route.path, OPERATOR_KEY).await;
+        assert!(
+            status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
+            "{} {} refused an operator key: {status}",
+            route.method,
+            route.path
+        );
+    }
+    for route in &table {
+        let status = status_with(&app, &route.method, route.path, OPERATOR_KEY).await;
+        match route.access {
+            Access::Write => assert_eq!(status, StatusCode::FORBIDDEN, "{}", route.path),
+            _ => assert!(
+                status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
+                "{} {} refused an operator key: {status}",
+                route.method,
+                route.path
+            ),
+        }
+    }
 }

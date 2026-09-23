@@ -32,6 +32,12 @@ services:
       # (QUICKSTART.md step 6), which asks the simulator's demo endpoint.
       # That endpoint is this project's own, not any Federal Reserve API.
       FEDNOW_GW_RISK_PROVIDER: ${FEDNOW_GW_RISK_PROVIDER:-none}
+      # Operator keys (label:key), the only ones that may release or cancel a
+      # held payment. Empty by default: then nobody can. Taken from your
+      # shell, never written here (QUICKSTART.md step 6).
+      FEDNOW_GW_OPERATOR_API_KEYS: ${FEDNOW_GW_OPERATOR_API_KEYS:-}
+      # How long a held payment stays releasable (seconds; default 4 h).
+      FEDNOW_GW_HOLD_MAX_AGE_SECS: ${FEDNOW_GW_HOLD_MAX_AGE_SECS:-14400}
     ports:
       - "8090:8090"
     depends_on:
