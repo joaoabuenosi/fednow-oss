@@ -13,8 +13,8 @@
     "render-og": "bash scripts/render-og.sh"
   },
   "dependencies": {
-    "@astrojs/starlight": "0.42.2",
-    "astro": "7.3.3"
+    "@astrojs/starlight": "0.42.4",
+    "astro": "7.3.5"
   },
   "engines": {
     "node": ">=22.0.0"
