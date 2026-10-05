@@ -13,7 +13,7 @@
 # start on bookworm's 2.36. Pinning `1-slim`'s current digest would have frozen
 # that skew in place rather than fixed it. Keep the two stages on the same
 # Debian release whenever either is bumped.
-FROM rust:1-slim-bookworm@sha256:ff521445a372125ed4f76e1453a1f8098f2d05332d1601d30db1c1f62757e730 AS build
+FROM rust:1-slim-bookworm@sha256:452176c0cefca88c0b3184ce85a4eb03e3d4fa05d2afb5366abcba853221019e AS build
 WORKDIR /src
 COPY . .
 RUN cargo build --release -p fednow-gateway
