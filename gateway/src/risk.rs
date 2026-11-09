@@ -269,7 +269,7 @@ impl RiskGate {
         // Reserve a slot in the concurrency budget, or do not call at all.
         let reserved = self
             .in_flight
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |n| {
                 (n < self.policy.max_in_flight).then_some(n + 1)
             })
             .is_ok();
