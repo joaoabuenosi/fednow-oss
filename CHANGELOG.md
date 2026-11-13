@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Security
 
+- **`rustls-webpki` bumped to 0.103.16 (RUSTSEC-2026-0382, #142).** 0.103.15
+  accepted certificate paths through distrusted emSign intermediates whose
+  private keys are now public (CVE-2026-111943); 0.103.16 rejects them.
+  Pulled in transitively via `rustls` ← `ureq`.
+
 - **The gateway REST API is authenticated, and fails closed (#59).** Until
   now anything that could reach `:8090` could submit a payment. Every route
   except `GET /healthz` now requires `Authorization: Bearer <key>`:
