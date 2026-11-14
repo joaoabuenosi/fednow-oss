@@ -56,7 +56,7 @@ jobs:
       # cargo-fuzz needs nightly: libFuzzer is reached through `-Zsanitizer`,
       # which is not available on stable. This is the only place in this
       # repository that is not built with the stable toolchain.
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
         with:
           toolchain: nightly
 
