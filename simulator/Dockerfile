@@ -13,7 +13,7 @@
 # start on bookworm's 2.36. Pinning `1-slim`'s current digest would have frozen
 # that skew in place rather than fixed it. Keep the two stages on the same
 # Debian release whenever either is bumped.
-FROM rust:1-slim-bookworm@sha256:452176c0cefca88c0b3184ce85a4eb03e3d4fa05d2afb5366abcba853221019e AS build
+FROM rust:1-slim-bookworm@sha256:7c7d4eb4d05b7781187a327809466cfddf29753f6defdc3d19a0e291951b7a37 AS build
 WORKDIR /src
 COPY . .
 RUN cargo build --release -p fednow-sim
