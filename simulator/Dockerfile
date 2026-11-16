@@ -18,7 +18,7 @@ WORKDIR /src
 COPY . .
 RUN cargo build --release -p fednow-sim
 
-FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
 COPY --from=build /src/target/release/fednow-sim /usr/local/bin/fednow-sim
 ENV FEDNOW_SIM_ADDR=0.0.0.0:8080
 EXPOSE 8080
