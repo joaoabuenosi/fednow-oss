@@ -13,6 +13,21 @@ All notable changes to this project are documented here. The format follows
   private keys are now public (CVE-2026-111943); 0.103.16 rejects them.
   Pulled in transitively via `rustls` ← `ureq`.
 
+- **`rusqlite` bumped to 0.41 (RUSTSEC-2026-0459, #148).** `libsqlite3-sys`
+  0.38.2 bundled a SQLite build affected by CVE-2026-119375 /
+  GHSA-72w2-rjgg-q729: opening a database file together with a sibling
+  `-wal` file of a different page size could return uninitialized
+  page-cache memory in query results. Pre-existing on `main` — found via
+  `cargo audit` while triaging open Dependabot PRs, not introduced by any
+  of them — and patched in `libsqlite3-sys` 0.39.0+, shipped with
+  rusqlite 0.41.
+
+  The same PR also cleared two advisories one level inside Astro's own
+  bundled packages in `site/`, both resolved by a non-breaking
+  `npm audit fix`: `postcss-selector-parser` (GHSA-rj75-hqrm-r3gf, quadratic
+  complexity in flat selector parsing) and `sharp` (CVE-2026-96889,
+  GHSA-wq5f-xc86-pv6w, via Astro's bundled `node_modules/sharp`).
+
 - **The gateway REST API is authenticated, and fails closed (#59).** Until
   now anything that could reach `:8090` could submit a payment. Every route
   except `GET /healthz` now requires `Authorization: Bearer <key>`:
